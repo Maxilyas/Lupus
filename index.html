@@ -246,16 +246,29 @@
     position: fixed;
     inset: 0;
     background: radial-gradient(ellipse at center, rgba(10,14,20,0.7) 0%, rgba(5,7,9,0.97) 80%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     z-index: 100;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
     transition: opacity 0.6s;
-    padding: 20px;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Inner wrapper handles centering. min-height + margin:auto means content
+     centers when it fits, but flows naturally (and stays scrollable) when it
+     doesn't — fixes the "Begin the Hunt" button cut off in landscape. */
+  #overlay > #start-screen,
+  #overlay > #death-screen,
+  #overlay > #pause-screen {
+    min-height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(16px, 4vh, 40px) 20px;
+    box-sizing: border-box;
   }
 
   #overlay.hidden {
@@ -344,6 +357,63 @@
     color: #e8d9b0;
     box-shadow: 0 0 30px rgba(212, 197, 160, 0.2);
   }
+
+  .start-btn.secondary {
+    margin-top: 12px;
+    font-size: clamp(11px, 2.4vw, 13px);
+    letter-spacing: 0.3em;
+    border-color: rgba(212, 197, 160, 0.2);
+    color: rgba(212, 197, 160, 0.6);
+  }
+  .start-btn.secondary:hover, .start-btn.secondary:active {
+    background: rgba(192, 57, 43, 0.05);
+    border-color: rgba(192, 57, 43, 0.5);
+    color: #c0392b;
+    box-shadow: none;
+  }
+
+  #pause-screen {
+    text-align: center;
+  }
+
+  #pause-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(32px, 9vw, 56px);
+    font-weight: 800;
+    letter-spacing: 0.4em;
+    color: #d4c5a0;
+    text-shadow: 0 0 30px rgba(212, 197, 160, 0.3);
+    margin-bottom: 20px;
+  }
+
+  #pause-btn {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 38px;
+    height: 38px;
+    margin-top: 36px;             /* sit just below the centered Time hud-block */
+    background: linear-gradient(135deg, rgba(10,14,20,0.85), rgba(20,26,36,0.7));
+    border: 1px solid rgba(212, 197, 160, 0.2);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    color: #d4c5a0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 11;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #pause-btn:hover, #pause-btn:active {
+    border-color: rgba(212, 197, 160, 0.5);
+    color: #e8d9b0;
+  }
+  #pause-btn.hidden { display: none; }
 
   #death-screen {
     text-align: center;
@@ -478,6 +548,21 @@
 
   body.is-mobile .desktop-only { display: none; }
   body.is-mobile .mobile-only { display: inline; }
+
+  /* Short landscape (most phones held sideways): tighten everything so the
+     start button is always visible without scrolling. */
+  @media (max-height: 480px) {
+    #title { font-size: clamp(36px, 9vw, 64px); margin-bottom: 4px; }
+    #subtitle { margin-bottom: 12px; }
+    #controls { line-height: 1.6; margin-bottom: 12px; }
+    .menu-line { margin: 8px 0; }
+    .start-btn { padding: 10px 32px; }
+    .start-btn.secondary { margin-top: 6px; }
+    #death-title, #pause-title { font-size: clamp(28px, 7vw, 48px); margin-bottom: 10px; }
+    #overlay > #start-screen,
+    #overlay > #death-screen,
+    #overlay > #pause-screen { padding: 12px 20px; }
+  }
 </style>
 </head>
 <body>
@@ -538,7 +623,18 @@
     <div class="menu-line"></div>
     <button class="start-btn" id="start-btn-2">Hunt Again</button>
   </div>
+
+  <div id="pause-screen" class="hidden">
+    <div id="pause-title">PAUSED</div>
+    <div id="death-stats">Distance · <strong id="pause-dist">0</strong> meters</div>
+    <div id="death-stats">Time · <strong id="pause-time">0:00</strong></div>
+    <div class="menu-line"></div>
+    <button class="start-btn" id="resume-btn">Resume</button>
+    <button class="start-btn secondary" id="quit-btn">Abandon the Hunt</button>
+  </div>
 </div>
+
+<button id="pause-btn" class="hidden" aria-label="Pause">⏸</button>
 
 <div id="rotate-prompt">
   <div id="rotate-icon"></div>
@@ -599,6 +695,11 @@
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    // Pause toggle: P or Escape, only during gameplay
+    if (e.code === 'KeyP' || e.code === 'Escape') {
+      if (state === 'playing') { e.preventDefault(); pauseGame(); }
+      else if (state === 'paused') { e.preventDefault(); resumeGame(); }
+    }
   });
   window.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -655,6 +756,7 @@
     squash: 1,        // current vertical scale (1 = neutral, <1 squash, >1 stretch)
     squashTarget: 1,  // eased toward this each frame
     prevVy: 0,        // for detecting hard landings
+    ridingPlatform: null, // moving/crumble platform the wolf is currently standing on
   };
 
   const CHUNK_W = 480;
@@ -758,6 +860,37 @@
             y: newGroundY - 100 - rng() * 80,
             w: 60 + rng() * 60, h: 14, type: 'platform'
           };
+
+          // After difficulty 0.25, allow mobile or crumble variants.
+          // Roll once for variant; only one of moving/crumble at a time.
+          if (difficulty > 0.25) {
+            const variantRoll = rng();
+            // moving: 18% baseline, capped 35% at full difficulty
+            const movingChance = Math.min(0.35, 0.18 + difficulty * 0.2);
+            // crumble: 12% baseline, capped 25%
+            const crumbleChance = Math.min(0.25, 0.12 + difficulty * 0.18);
+            if (variantRoll < movingChance) {
+              sp.type = 'moving';
+              sp.baseX = sp.x;
+              sp.baseY = sp.y;
+              // Direction: 70% horizontal, 30% vertical. Range scales lightly.
+              if (rng() < 0.7) {
+                sp.axis = 'x';
+                sp.range = 40 + rng() * 60;     // 40-100 px swing
+              } else {
+                sp.axis = 'y';
+                sp.range = 30 + rng() * 40;     // 30-70 px swing
+              }
+              sp.speed = 0.015 + rng() * 0.015; // ~0.5-1 Hz
+              sp.phase = rng() * Math.PI * 2;
+              sp.dx = 0; sp.dy = 0;             // displacement this frame, used by collision
+            } else if (variantRoll < movingChance + crumbleChance) {
+              sp.type = 'crumble';
+              sp.crumbleTimer = 0;              // counts up once stepped on
+              sp.crumbled = false;
+            }
+          }
+
           platforms.push(sp);
           if (rng() < 0.5) {
             collectibles.push({ x: sp.x + sp.w/2 - 8, y: sp.y - 22, w: 16, h: 16, collected: false, kind: rng() < 0.3 ? 'meat' : 'orb' });
@@ -789,6 +922,43 @@
 
   const particles = [];
   function addParticle(p) { particles.push(p); }
+
+  // Ambient particles: fireflies near grass, leaves drifting near trees.
+  // Separate pool because they have different update logic and we cap them
+  // hard (40 max) so they never compete with gameplay particles for budget.
+  const ambient = [];
+  const AMBIENT_MAX = 40;
+  let ambientSpawnAccumulator = 0;
+
+  function spawnFirefly(x, y) {
+    if (ambient.length >= AMBIENT_MAX) return;
+    ambient.push({
+      x, y,
+      baseY: y,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: -0.05 - Math.random() * 0.1,
+      phase: Math.random() * Math.PI * 2,
+      life: 240 + Math.random() * 180,
+      max: 420,
+      size: 1.5 + Math.random() * 1,
+      kind: 'firefly'
+    });
+  }
+  function spawnLeaf(x, y) {
+    if (ambient.length >= AMBIENT_MAX) return;
+    ambient.push({
+      x, y,
+      vx: -0.3 - Math.random() * 0.4,        // drift left with the wind
+      vy: 0.15 + Math.random() * 0.2,
+      phase: Math.random() * Math.PI * 2,
+      sway: 0.4 + Math.random() * 0.4,
+      life: 180 + Math.random() * 120,
+      max: 300,
+      size: 2 + Math.random() * 1.5,
+      tint: Math.random() < 0.5 ? '90, 75, 50' : '110, 95, 60',
+      kind: 'leaf'
+    });
+  }
   function spawnDust(x, y) {
     for (let i = 0; i < 3; i++) {
       addParticle({
@@ -887,6 +1057,41 @@
 
     const activeChunks = getActiveChunks();
 
+    // Advance dynamic platforms BEFORE collision so dx/dy are known
+    for (const c of activeChunks) {
+      for (const p of c.platforms) {
+        if (p.type === 'moving') {
+          const t = frame * p.speed + p.phase;
+          let nx = p.baseX, ny = p.baseY;
+          if (p.axis === 'x') nx = p.baseX + Math.sin(t) * p.range;
+          else                ny = p.baseY + Math.sin(t) * p.range;
+          p.dx = nx - p.x;
+          p.dy = ny - p.y;
+          p.x = nx; p.y = ny;
+        } else if (p.type === 'crumble') {
+          if (p.crumbleTimer > 0 && !p.crumbled) {
+            p.crumbleTimer++;
+            if (p.crumbleTimer > 24) {
+              p.crumbled = true;
+              p.crumbleFallVy = 0;
+            }
+          }
+          if (p.crumbled) {
+            p.crumbleFallVy += 0.5;
+            p.y += p.crumbleFallVy;
+          }
+        }
+      }
+    }
+
+    // Carry the player along with the moving platform they were riding last frame
+    if (wolf.ridingPlatform && wolf.ridingPlatform.type === 'moving') {
+      wolf.x += wolf.ridingPlatform.dx;
+      wolf.y += wolf.ridingPlatform.dy;
+    }
+    // Reset; will be re-set on landing this frame if still on one
+    wolf.ridingPlatform = null;
+
     const left = keys['ArrowLeft'] || keys['KeyA'] || touch.left;
     const right = keys['ArrowRight'] || keys['KeyD'] || touch.right;
     const jumpHeld = keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touch.jump;
@@ -948,8 +1153,9 @@
     let allPlatforms = [];
     for (const c of activeChunks) allPlatforms = allPlatforms.concat(c.platforms);
     for (const p of allPlatforms) {
+      if (p.type === 'crumble' && p.crumbled) continue;
       if (rectsOverlap(wolf, p)) {
-        if (p.type === 'ground' || p.type === 'platform') {
+        if (p.type === 'ground') {
           if (wolf.vx > 0) wolf.x = p.x - wolf.w;
           else if (wolf.vx < 0) wolf.x = p.x + p.w;
           wolf.vx = 0;
@@ -961,13 +1167,24 @@
     const wasInAir = !wolf.onGround;
     wolf.onGround = false;
     for (const p of allPlatforms) {
+      // Skip fully crumbled platforms entirely
+      if (p.type === 'crumble' && p.crumbled) continue;
       if (rectsOverlap(wolf, p)) {
-        if (p.type === 'platform') {
-          if (wolf.vy > 0 && (wolf.y + wolf.h - wolf.vy) <= p.y + 4) {
+        const isOneWay = (p.type === 'platform' || p.type === 'moving' || p.type === 'crumble');
+        if (isOneWay) {
+          if (wolf.vy >= 0 && (wolf.y + wolf.h - wolf.vy) <= p.y + 4) {
             wolf.y = p.y - wolf.h;
             wolf.vy = 0;
             wolf.onGround = true;
             wolf.jumps = 0;
+            // Remember for next-frame carry
+            if (p.type === 'moving' || p.type === 'crumble') {
+              wolf.ridingPlatform = p;
+            }
+            // Trigger crumble countdown on contact
+            if (p.type === 'crumble' && p.crumbleTimer === 0) {
+              p.crumbleTimer = 1;
+            }
           }
         } else {
           if (wolf.vy > 0) {
@@ -1123,6 +1340,56 @@
       if (p.life <= 0) particles.splice(i, 1);
     }
 
+    // Ambient: update + cull. Spawn from visible chunks at a controlled rate.
+    for (let i = ambient.length - 1; i >= 0; i--) {
+      const a = ambient[i];
+      a.life--;
+      a.phase += 0.05;
+      if (a.kind === 'firefly') {
+        // Gentle sinusoidal drift, hovers around baseY
+        a.x += a.vx + Math.sin(a.phase) * 0.15;
+        a.y += a.vy + Math.cos(a.phase * 0.7) * 0.1;
+        if (a.y < a.baseY - 60) a.vy += 0.005;
+        else if (a.y > a.baseY) a.vy -= 0.005;
+      } else if (a.kind === 'leaf') {
+        a.x += a.vx + Math.sin(a.phase) * a.sway;
+        a.y += a.vy;
+      }
+      // Cull off-screen or expired
+      const sx = a.x - camera.x;
+      if (a.life <= 0 || sx < -30 || sx > W + 30 || a.y > camera.y + H + 30) {
+        ambient.splice(i, 1);
+      }
+    }
+
+    // Spawner: roughly 1 spawn every 8 frames, only if we have headroom
+    ambientSpawnAccumulator++;
+    if (ambientSpawnAccumulator >= 8 && ambient.length < AMBIENT_MAX) {
+      ambientSpawnAccumulator = 0;
+      // Pick a random visible chunk and use its grassDetails / trees as anchors
+      if (activeChunks.length > 0) {
+        const c = activeChunks[Math.floor(Math.random() * activeChunks.length)];
+        if (Math.random() < 0.55 && c.grassDetails.length > 0) {
+          // Firefly above grass tuft
+          const g = c.grassDetails[Math.floor(Math.random() * c.grassDetails.length)];
+          // Only spawn if it'll actually appear inside the camera frustum (+margin)
+          const sx = g.x - camera.x;
+          if (sx > -20 && sx < W + 20) {
+            spawnFirefly(g.x + (Math.random() - 0.5) * 20, g.y - 20 - Math.random() * 50);
+          }
+        } else if (c.trees.length > 0) {
+          // Leaf falling from tree canopy. Leaves drift in from the right edge
+          // so they enter the player's field of view rather than spawn on top.
+          const t = c.trees[Math.floor(Math.random() * c.trees.length)];
+          const tx = t.x + W * 0.4; // bias toward leading edge of camera
+          const sx = tx - camera.x;
+          if (sx > W * 0.4 && sx < W + 20) {
+            spawnLeaf(tx, t.y - 80 - Math.random() * 40);
+          }
+        }
+      }
+    }
+
     document.getElementById('distance').textContent = Math.floor(wolf.x / 10) + ' m';
     const sec = Math.floor(elapsedMs / 1000);
     document.getElementById('timer').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
@@ -1211,6 +1478,8 @@
 
     for (const c of activeChunks) {
       for (const p of c.platforms) {
+        // Skip crumble platforms that have fallen off-screen
+        if (p.type === 'crumble' && p.crumbled && p.y > camera.y + H + 200) continue;
         drawPlatform(p);
       }
     }
@@ -1256,6 +1525,26 @@
       ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
     }
 
+    // Ambient: fireflies (warm glow) + leaves (small dark flakes)
+    for (const a of ambient) {
+      const lifeRatio = a.life / a.max;
+      // Fade in at birth, fade out at death (bell curve via sin on lifeRatio)
+      const fade = Math.min(1, Math.sin(lifeRatio * Math.PI) * 1.3);
+      if (a.kind === 'firefly') {
+        const flicker = 0.6 + 0.4 * Math.sin(a.phase * 3);
+        const alpha = fade * flicker;
+        // Soft glow halo
+        ctx.fillStyle = `rgba(244, 220, 130, ${alpha * 0.25})`;
+        ctx.fillRect(a.x - 3, a.y - 3, 6, 6);
+        // Bright core
+        ctx.fillStyle = `rgba(255, 240, 180, ${alpha})`;
+        ctx.fillRect(a.x - a.size/2, a.y - a.size/2, a.size, a.size);
+      } else { // leaf
+        ctx.fillStyle = `rgba(${a.tint}, ${fade * 0.8})`;
+        ctx.fillRect(a.x - a.size/2, a.y - a.size/2, a.size, a.size * 0.6);
+      }
+    }
+
     drawWolf();
 
     ctx.restore();
@@ -1296,22 +1585,68 @@
       for (let i = 0; i < p.w; i += 12) {
         ctx.fillRect(p.x + i + ((i*7)%9), p.y + 20 + ((i*13)%30), 2, 2);
       }
+      return;
+    }
+
+    // Crumble: warning shake while timer > 0; drops with extra rubble particles
+    let drawX = p.x, drawY = p.y;
+    if (p.type === 'crumble' && p.crumbleTimer > 0 && !p.crumbled) {
+      // Vibrate harder as it gets closer to collapse
+      const t = p.crumbleTimer / 24;
+      const amp = 0.5 + t * 1.5;
+      drawX += (Math.random() - 0.5) * amp;
+      drawY += (Math.random() - 0.5) * amp;
+    }
+
+    // Base wooden platform body (shared by platform/moving/crumble)
+    const grad = ctx.createLinearGradient(0, drawY, 0, drawY + p.h);
+    if (p.type === 'crumble') {
+      grad.addColorStop(0, '#4a3828');   // older, darker, mossy
+      grad.addColorStop(1, '#1a1208');
+    } else if (p.type === 'moving') {
+      grad.addColorStop(0, '#6a5238');   // hint of metal/chains warmth
+      grad.addColorStop(1, '#2e2018');
     } else {
-      const grad = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
       grad.addColorStop(0, '#5a4a32');
       grad.addColorStop(1, '#2a1f12');
-      ctx.fillStyle = grad;
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(drawX, drawY, p.w, p.h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < p.w; i += 12) {
+      ctx.beginPath();
+      ctx.moveTo(drawX + i, drawY);
+      ctx.lineTo(drawX + i, drawY + p.h);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#4a5e36';
+    ctx.fillRect(drawX, drawY, p.w, 2);
+
+    if (p.type === 'moving') {
+      // Suspension chains anchored to the original baseY, swaying slightly
+      ctx.strokeStyle = 'rgba(80, 70, 55, 0.55)';
       ctx.lineWidth = 1;
-      for (let i = 0; i < p.w; i += 12) {
+      const anchors = [drawX + 6, drawX + p.w - 6];
+      for (const ax of anchors) {
         ctx.beginPath();
-        ctx.moveTo(p.x + i, p.y);
-        ctx.lineTo(p.x + i, p.y + p.h);
+        ctx.moveTo(ax, drawY);
+        ctx.lineTo(ax, drawY - 80);
         ctx.stroke();
       }
-      ctx.fillStyle = '#4a5e36';
-      ctx.fillRect(p.x, p.y, p.w, 2);
+    } else if (p.type === 'crumble') {
+      // Cracks across the surface, more visible as timer climbs
+      const crackAlpha = p.crumbleTimer > 0 ? 0.35 + Math.min(0.5, p.crumbleTimer / 24 * 0.5) : 0.2;
+      ctx.strokeStyle = `rgba(0,0,0,${crackAlpha})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(drawX + p.w * 0.25, drawY + 2);
+      ctx.lineTo(drawX + p.w * 0.35, drawY + p.h - 2);
+      ctx.moveTo(drawX + p.w * 0.6, drawY + 2);
+      ctx.lineTo(drawX + p.w * 0.55, drawY + p.h - 2);
+      ctx.moveTo(drawX + p.w * 0.8, drawY + 4);
+      ctx.lineTo(drawX + p.w * 0.85, drawY + p.h);
+      ctx.stroke();
     }
   }
 
@@ -1571,13 +1906,17 @@
     wolf.health = 100; wolf.stamina = 100;
     wolf.invuln = 0; wolf.jumps = 0;
     wolf.squash = 1; wolf.squashTarget = 1; wolf.prevVy = 0;
+    wolf.ridingPlatform = null;
     camera.x = 0; camera.y = 0;
     chunks.clear();
     particles.length = 0;
+    ambient.length = 0;
     shakeAmp = 0;
     hitStop = 0;
     seed = Math.floor(Math.random() * 1e9);
     startTime = performance.now();
+    pauseAccumulatedMs = 0;
+    pauseStartedAt = 0;
 
     touch.left = touch.right = touch.jump = touch.sprint = false;
     touch.jumpEdge = false;
@@ -1587,6 +1926,8 @@
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('start-screen').classList.remove('hidden');
     document.getElementById('death-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('pause-btn').classList.remove('hidden');
 
     if (isMobile) {
       const el = document.documentElement;
@@ -1599,6 +1940,62 @@
       }
     }
   }
+
+  // Pause: freeze the game and the timer. Pause time is accumulated and
+  // subtracted from elapsed so the displayed timer is true survival time.
+  let pauseAccumulatedMs = 0;
+  let pauseStartedAt = 0;
+
+  function pauseGame() {
+    if (state !== 'playing') return;
+    state = 'paused';
+    pauseStartedAt = performance.now();
+
+    // Clear input so we don't drift while paused
+    keys = {};
+    touch.left = touch.right = touch.jump = touch.sprint = false;
+    touch.jumpEdge = false;
+    document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('pressed'));
+
+    document.getElementById('pause-dist').textContent = Math.floor(wolf.x / 10);
+    const sec = Math.floor(elapsedMs / 1000);
+    document.getElementById('pause-time').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+
+    document.getElementById('overlay').classList.remove('hidden');
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('death-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.remove('hidden');
+    document.getElementById('pause-btn').classList.add('hidden');
+  }
+
+  function resumeGame() {
+    if (state !== 'paused') return;
+    state = 'playing';
+    // Add the time we spent paused to startTime so elapsedMs is unaffected
+    if (pauseStartedAt > 0) {
+      startTime += performance.now() - pauseStartedAt;
+      pauseStartedAt = 0;
+    }
+    document.getElementById('overlay').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('pause-btn').classList.remove('hidden');
+  }
+
+  function quitToMenu() {
+    state = 'menu';
+    pauseStartedAt = 0;
+    document.getElementById('overlay').classList.remove('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+    document.getElementById('death-screen').classList.add('hidden');
+    document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('pause-btn').classList.add('hidden');
+  }
+
+  // Auto-pause if the tab loses focus while playing
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'playing') pauseGame();
+  });
 
   function die() {
     state = 'dead';
@@ -1627,6 +2024,7 @@
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('death-screen').classList.remove('hidden');
     document.getElementById('hud').classList.add('hidden');
+    document.getElementById('pause-btn').classList.add('hidden');
 
     touch.left = touch.right = touch.jump = touch.sprint = false;
     document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('pressed'));
@@ -1634,6 +2032,22 @@
 
   document.getElementById('start-btn').addEventListener('click', startGame);
   document.getElementById('start-btn-2').addEventListener('click', startGame);
+
+  // Pause UI
+  const pauseBtnEl = document.getElementById('pause-btn');
+  const resumeBtnEl = document.getElementById('resume-btn');
+  const quitBtnEl = document.getElementById('quit-btn');
+
+  // Use pointerdown for snappy mobile response, and stopPropagation so the
+  // tap never bubbles to canvas-level handlers.
+  const bindTap = (el, fn) => {
+    const h = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+    el.addEventListener('pointerdown', h);
+    el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+  };
+  bindTap(pauseBtnEl, () => pauseGame());
+  bindTap(resumeBtnEl, () => resumeGame());
+  bindTap(quitBtnEl, () => quitToMenu());
 
   function checkOrientation() {
     if (!isMobile) return;
