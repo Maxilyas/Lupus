@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e14">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>LUPUS — Survival of the Wild</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=IM+Fell+English:ital@0;1&display=swap');
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    background: #0a0e14;
+    overflow: hidden;
+    font-family: 'IM Fell English', serif;
+    color: #d4c5a0;
+    touch-action: none;
+    overscroll-behavior: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  #wrap {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #050709;
+  }
+
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #0d1218;
+    touch-action: none;
+  }
+
+  /* On desktop, give the canvas the framed look. On mobile, it goes edge-to-edge. */
+  @media (hover: hover) and (min-width: 768px) {
+    #wrap {
+      background:
+        radial-gradient(ellipse at 50% 40%, #1a2030 0%, #0a0e14 70%),
+        #050709;
+    }
+    canvas {
+      box-shadow:
+        0 0 0 1px rgba(212, 197, 160, 0.15),
+        0 0 60px rgba(0, 0, 0, 0.8),
+        inset 0 0 120px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+    z-index: 10;
+    font-family: 'Cinzel', serif;
+    gap: 8px;
+  }
+
+  .hud-block {
+    background: linear-gradient(135deg, rgba(10,14,20,0.85), rgba(20,26,36,0.7));
+    border: 1px solid rgba(212, 197, 160, 0.2);
+    padding: 6px 12px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .label {
+    font-size: 8px;
+    letter-spacing: 0.25em;
+    color: #8a7d5c;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .value {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #e8d9b0;
+    text-shadow: 0 0 12px rgba(232, 217, 176, 0.3);
+  }
+
+  #health-bar {
+    width: 120px;
+    height: 6px;
+    background: rgba(50, 20, 20, 0.8);
+    border: 1px solid rgba(212, 197, 160, 0.25);
+    margin-top: 4px;
+    overflow: hidden;
+  }
+
+  #health-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #c0392b, #e74c3c, #ff6b4a);
+    transition: width 0.2s ease;
+    box-shadow: 0 0 8px rgba(231, 76, 60, 0.6);
+  }
+
+  #stamina-bar {
+    width: 120px;
+    height: 3px;
+    background: rgba(20, 30, 50, 0.8);
+    border: 1px solid rgba(212, 197, 160, 0.2);
+    margin-top: 3px;
+    overflow: hidden;
+  }
+
+  #stamina-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2980b9, #5dade2);
+    transition: width 0.1s linear;
+  }
+
+  @media (min-width: 768px) and (hover: hover) {
+    #hud { padding: 18px 28px; }
+    .hud-block { padding: 10px 18px; }
+    .label { font-size: 10px; letter-spacing: 0.3em; margin-bottom: 4px; }
+    .value { font-size: 22px; }
+    #health-bar { width: 200px; height: 8px; margin-top: 6px; }
+    #stamina-bar { width: 200px; height: 4px; margin-top: 4px; }
+  }
+
+  /* TOUCH CONTROLS */
+  #touch-controls {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    display: none;
+  }
+
+  #touch-controls.active { display: block; }
+
+  .touch-btn {
+    position: absolute;
+    pointer-events: auto;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(40,48,60,0.65), rgba(10,14,20,0.55));
+    border: 2px solid rgba(212, 197, 160, 0.35);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #d4c5a0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-weight: 800;
+    font-size: 26px;
+    letter-spacing: 0.05em;
+    transition: transform 0.08s, background 0.08s, border-color 0.08s;
+    box-shadow:
+      0 4px 20px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(212, 197, 160, 0.15);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .touch-btn.pressed {
+    transform: scale(0.92);
+    background: radial-gradient(circle at 35% 35%, rgba(212, 197, 160, 0.25), rgba(80,70,40,0.4));
+    border-color: rgba(232, 217, 176, 0.7);
+    box-shadow:
+      0 2px 10px rgba(0,0,0,0.5),
+      inset 0 0 20px rgba(212, 197, 160, 0.2);
+  }
+
+  #btn-left {
+    bottom: 28px;
+    left: 24px;
+    width: 72px;
+    height: 72px;
+  }
+
+  #btn-right {
+    bottom: 28px;
+    left: 110px;
+    width: 72px;
+    height: 72px;
+  }
+
+  #btn-jump {
+    bottom: 60px;
+    right: 28px;
+    width: 90px;
+    height: 90px;
+    font-size: 28px;
+    background: radial-gradient(circle at 35% 35%, rgba(60,80,40,0.65), rgba(20,30,15,0.6));
+    border-color: rgba(160, 200, 100, 0.4);
+  }
+
+  #btn-jump.pressed {
+    background: radial-gradient(circle at 35% 35%, rgba(160, 200, 100, 0.4), rgba(80,110,40,0.5));
+    border-color: rgba(190, 230, 130, 0.8);
+  }
+
+  #btn-sprint {
+    bottom: 28px;
+    right: 130px;
+    width: 60px;
+    height: 60px;
+    font-size: 18px;
+    background: radial-gradient(circle at 35% 35%, rgba(80,40,40,0.6), rgba(40,15,15,0.55));
+    border-color: rgba(220, 100, 80, 0.4);
+  }
+
+  #btn-sprint.pressed {
+    background: radial-gradient(circle at 35% 35%, rgba(220, 100, 80, 0.4), rgba(140,50,40,0.5));
+    border-color: rgba(255, 140, 100, 0.8);
+  }
+
+  /* OVERLAY */
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(10,14,20,0.7) 0%, rgba(5,7,9,0.97) 80%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    transition: opacity 0.6s;
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  #overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(48px, 14vw, 96px);
+    font-weight: 800;
+    letter-spacing: 0.4em;
+    color: #d4c5a0;
+    text-shadow:
+      0 0 30px rgba(212, 197, 160, 0.4),
+      0 0 60px rgba(212, 197, 160, 0.15);
+    margin-bottom: 8px;
+    position: relative;
+    animation: breathe 4s ease-in-out infinite;
+    text-align: center;
+  }
+
+  @keyframes breathe {
+    0%, 100% { text-shadow: 0 0 30px rgba(212, 197, 160, 0.4), 0 0 60px rgba(212, 197, 160, 0.15); }
+    50% { text-shadow: 0 0 40px rgba(212, 197, 160, 0.6), 0 0 80px rgba(212, 197, 160, 0.25); }
+  }
+
+  #subtitle {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: clamp(13px, 3vw, 18px);
+    color: #8a7d5c;
+    letter-spacing: 0.2em;
+    margin-bottom: clamp(28px, 6vw, 60px);
+    text-align: center;
+  }
+
+  .menu-line {
+    width: clamp(180px, 50vw, 240px);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d4c5a0, transparent);
+    margin: clamp(14px, 3vw, 20px) 0;
+  }
+
+  #controls {
+    font-family: 'IM Fell English', serif;
+    font-size: clamp(13px, 3vw, 16px);
+    color: #a89978;
+    text-align: center;
+    line-height: 2;
+    margin-bottom: clamp(20px, 5vw, 40px);
+    max-width: 90vw;
+  }
+
+  .key {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1px solid rgba(212, 197, 160, 0.4);
+    background: rgba(20, 26, 36, 0.6);
+    margin: 2px 3px;
+    font-family: 'Cinzel', serif;
+    font-size: clamp(11px, 2.5vw, 13px);
+    color: #d4c5a0;
+    letter-spacing: 0.1em;
+  }
+
+  .start-btn {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(13px, 3vw, 16px);
+    font-weight: 600;
+    letter-spacing: 0.4em;
+    color: #d4c5a0;
+    background: transparent;
+    border: 1px solid rgba(212, 197, 160, 0.4);
+    padding: clamp(12px, 3vw, 16px) clamp(28px, 8vw, 50px);
+    cursor: pointer;
+    transition: all 0.4s;
+    text-transform: uppercase;
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .start-btn:hover, .start-btn:active {
+    background: rgba(212, 197, 160, 0.08);
+    border-color: #d4c5a0;
+    color: #e8d9b0;
+    box-shadow: 0 0 30px rgba(212, 197, 160, 0.2);
+  }
+
+  #death-screen {
+    text-align: center;
+  }
+
+  #death-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(36px, 10vw, 64px);
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    color: #c0392b;
+    text-shadow: 0 0 30px rgba(192, 57, 43, 0.5);
+    margin-bottom: 20px;
+  }
+
+  #death-stats {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: clamp(15px, 3.5vw, 22px);
+    color: #d4c5a0;
+    margin-bottom: 8px;
+  }
+
+  #death-stats strong {
+    color: #e8d9b0;
+    font-style: normal;
+    font-weight: 800;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.1em;
+  }
+
+  #death-stats.best-row {
+    margin-top: 14px;
+    font-size: clamp(13px, 3vw, 18px);
+    color: #9a8d6c;
+    letter-spacing: 0.05em;
+  }
+  #death-stats.best-row strong {
+    color: #d4c5a0;
+  }
+  #death-stats.best-row.new-record {
+    color: #f4c430;
+    text-shadow: 0 0 12px rgba(244, 196, 48, 0.4);
+  }
+  #death-stats.best-row.new-record::before {
+    content: 'NEW RECORD · ';
+    font-family: 'Cinzel', serif;
+    font-style: normal;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    color: #f4c430;
+  }
+  #death-stats.best-row.new-record strong {
+    color: #fff5b8;
+  }
+
+  #moon {
+    position: absolute;
+    top: 8%;
+    right: 12%;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #f5ecd0, #d4c5a0 60%, #8a7d5c);
+    box-shadow:
+      0 0 40px rgba(212, 197, 160, 0.4),
+      0 0 80px rgba(212, 197, 160, 0.2),
+      inset -8px -8px 0 rgba(0, 0, 0, 0.15);
+    animation: moonPulse 6s ease-in-out infinite;
+  }
+
+  @keyframes moonPulse {
+    0%, 100% { box-shadow: 0 0 40px rgba(212, 197, 160, 0.4), 0 0 80px rgba(212, 197, 160, 0.2), inset -8px -8px 0 rgba(0, 0, 0, 0.15); }
+    50% { box-shadow: 0 0 60px rgba(212, 197, 160, 0.6), 0 0 120px rgba(212, 197, 160, 0.3), inset -8px -8px 0 rgba(0, 0, 0, 0.15); }
+  }
+
+  #rotate-prompt {
+    position: fixed;
+    inset: 0;
+    background: #0a0e14;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 30px;
+  }
+
+  #rotate-prompt.show { display: flex; }
+
+  #rotate-icon {
+    width: 80px;
+    height: 80px;
+    border: 3px solid #d4c5a0;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    animation: rotate 2s ease-in-out infinite;
+    position: relative;
+  }
+
+  #rotate-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    background: #d4c5a0;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  @keyframes rotate {
+    0%, 100% { transform: rotate(0); }
+    50% { transform: rotate(90deg); }
+  }
+
+  #rotate-prompt p {
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    letter-spacing: 0.3em;
+    color: #d4c5a0;
+    text-transform: uppercase;
+    line-height: 1.8;
+  }
+
+  .hidden { display: none !important; }
+
+  .desktop-only { display: inline; }
+  .mobile-only { display: none; }
+
+  body.is-mobile .desktop-only { display: none; }
+  body.is-mobile .mobile-only { display: inline; }
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="hud-block">
+    <div class="label">Distance</div>
+    <div class="value" id="distance">0 m</div>
+  </div>
+  <div class="hud-block" style="text-align: center;">
+    <div class="label">Time</div>
+    <div class="value" id="timer">0:00</div>
+  </div>
+  <div class="hud-block" style="text-align: right;">
+    <div class="label">Vitals</div>
+    <div id="health-bar"><div id="health-fill" style="width: 100%;"></div></div>
+    <div id="stamina-bar"><div id="stamina-fill" style="width: 100%;"></div></div>
+  </div>
+</div>
+
+<div id="touch-controls">
+  <div class="touch-btn" id="btn-left">◀</div>
+  <div class="touch-btn" id="btn-right">▶</div>
+  <div class="touch-btn" id="btn-sprint">⚡</div>
+  <div class="touch-btn" id="btn-jump">▲</div>
+</div>
+
+<div id="overlay">
+  <div id="moon"></div>
+  <div id="start-screen">
+    <div id="title">LUPUS</div>
+    <div id="subtitle">— Survival of the Wild —</div>
+    <div id="controls">
+      <span class="desktop-only">
+        Move <span class="key">A</span> <span class="key">D</span> <span style="opacity:0.5;">or</span> <span class="key">←</span> <span class="key">→</span><br>
+        Jump <span class="key">SPACE</span> <span style="opacity:0.5;">or</span> <span class="key">W</span> <span class="key">↑</span><br>
+        Sprint <span class="key">SHIFT</span> &nbsp;·&nbsp; Double Jump available
+      </span>
+      <span class="mobile-only">
+        Move <span class="key">◀</span> <span class="key">▶</span> &nbsp;·&nbsp; Jump <span class="key">▲</span><br>
+        Sprint <span class="key">⚡</span> &nbsp;·&nbsp; Tap <span class="key">▲</span> twice for double jump<br>
+        <span style="opacity:0.7; font-size: 0.85em;">Best played in landscape</span>
+      </span>
+    </div>
+    <div class="menu-line"></div>
+    <button class="start-btn" id="start-btn">Begin the Hunt</button>
+  </div>
+
+  <div id="death-screen" class="hidden">
+    <div id="death-title">FALLEN</div>
+    <div id="death-stats">You travelled <strong id="final-dist">0</strong> meters</div>
+    <div id="death-stats">and survived for <strong id="final-time">0:00</strong></div>
+    <div id="death-stats" class="best-row">Best run · <strong id="best-dist">0</strong> meters</div>
+    <div class="menu-line"></div>
+    <button class="start-btn" id="start-btn-2">Hunt Again</button>
+  </div>
+</div>
+
+<div id="rotate-prompt">
+  <div id="rotate-icon"></div>
+  <p>Please rotate<br>your device</p>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  // Logical game size — the world is designed at this resolution, but we render
+  // the canvas at the device's actual pixel size and scale the game to fit.
+  const BASE_W = 960;
+  const BASE_H = 540;
+  // Current rendering dimensions (updated on resize)
+  let W = BASE_W;
+  let H = BASE_H;
+  let scale = 1;
+  let dpr = 1;
+
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                  || ('ontouchstart' in window && window.innerWidth < 1024);
+
+  if (isMobile) {
+    document.body.classList.add('is-mobile');
+    document.getElementById('touch-controls').classList.add('active');
+  }
+
+  let state = 'menu';
+  let camera = { x: 0, y: 0 };
+  let keys = {};
+  let frame = 0;
+  let startTime = 0;
+  let elapsedMs = 0;
+
+  // Gamefeel: screen shake (decays each frame) + hit-stop (frames where update is skipped)
+  let shakeAmp = 0;
+  let shakeDecay = 0.85;
+  let hitStop = 0;
+  function addShake(amp) { if (amp > shakeAmp) shakeAmp = amp; }
+  function addHitStop(frames) { if (frames > hitStop) hitStop = frames; }
+
+  // Persistent high score
+  let highScore = 0;
+  try {
+    const hs = parseInt(localStorage.getItem('lupus_highscore') || '0', 10);
+    if (!isNaN(hs)) highScore = hs;
+  } catch (_) {}
+
+  const touch = {
+    left: false,
+    right: false,
+    jump: false,
+    jumpEdge: false,
+    sprint: false,
+  };
+
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+  function setupTouchButton(id, key, isJump) {
+    const btn = document.getElementById(id);
+    const press = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.add('pressed');
+      if (isJump && !touch[key]) touch.jumpEdge = true;
+      touch[key] = true;
+    };
+    const release = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.remove('pressed');
+      touch[key] = false;
+    };
+    btn.addEventListener('touchstart', press, { passive: false });
+    btn.addEventListener('touchend', release, { passive: false });
+    btn.addEventListener('touchcancel', release, { passive: false });
+    btn.addEventListener('mousedown', press);
+    btn.addEventListener('mouseup', release);
+    btn.addEventListener('mouseleave', release);
+  }
+
+  setupTouchButton('btn-left', 'left', false);
+  setupTouchButton('btn-right', 'right', false);
+  setupTouchButton('btn-jump', 'jump', true);
+  setupTouchButton('btn-sprint', 'sprint', false);
+
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('touchmove', e => {
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  const wolf = {
+    x: 100, y: 200,
+    vx: 0, vy: 0,
+    w: 44, h: 28,
+    onGround: false,
+    facing: 1,
+    health: 100,
+    stamina: 100,
+    sprinting: false,
+    jumps: 0,
+    maxJumps: 2,
+    runFrame: 0,
+    invuln: 0,
+    coyote: 0,
+    jumpBuffer: 0,
+    dustTimer: 0,
+    squash: 1,        // current vertical scale (1 = neutral, <1 squash, >1 stretch)
+    squashTarget: 1,  // eased toward this each frame
+    prevVy: 0,        // for detecting hard landings
+  };
+
+  const CHUNK_W = 480;
+  const chunks = new Map();
+  let seed = 1337;
+
+  function mulberry32(a) {
+    return function() {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function generateChunk(idx) {
+    if (chunks.has(idx)) return chunks.get(idx);
+    const rng = mulberry32(seed + idx * 9301);
+    const baseX = idx * CHUNK_W;
+    const platforms = [];
+    const hazards = [];
+    const collectibles = [];
+    const trees = [];
+    const enemies = [];
+    const grassDetails = [];
+
+    if (idx === 0) {
+      platforms.push({ x: baseX, y: 380, w: CHUNK_W, h: 160, type: 'ground' });
+      for (let i = 0; i < 8; i++) {
+        trees.push({ x: baseX + i * 60 + rng() * 20, y: 380, scale: 0.8 + rng() * 0.6, kind: Math.floor(rng() * 3) });
+        grassDetails.push({ x: baseX + rng() * CHUNK_W, y: 380, len: 4 + rng() * 8 });
+        grassDetails.push({ x: baseX + rng() * CHUNK_W, y: 380, len: 4 + rng() * 8 });
+      }
+    } else {
+      const difficulty = Math.min(1, idx / 20);
+      let cursor = baseX;
+      let lastGroundY = 380 + (rng() - 0.5) * 40;
+
+      while (cursor < baseX + CHUNK_W) {
+        const gapChance = 0.2 + difficulty * 0.3;
+        if (rng() < gapChance && cursor > baseX + 60) {
+          const gapW = 60 + rng() * (80 + difficulty * 60);
+          if (rng() < 0.6) {
+            const pY = lastGroundY - 60 - rng() * 80;
+            const pW = 60 + rng() * 60;
+            platforms.push({ x: cursor + (gapW - pW) / 2, y: pY, w: pW, h: 14, type: 'platform' });
+            if (rng() < 0.15 * difficulty) {
+              hazards.push({ x: cursor + gapW/2 - 10, y: pY - 20, w: 20, h: 20, type: 'spike' });
+            }
+            if (rng() < 0.5) {
+              collectibles.push({ x: cursor + gapW/2 - 8, y: pY - 22, w: 16, h: 16, collected: false, kind: rng() < 0.3 ? 'meat' : 'orb' });
+            }
+          }
+          cursor += gapW;
+        }
+
+        const segW = 80 + rng() * 200;
+        const newGroundY = Math.max(280, Math.min(440, lastGroundY + (rng() - 0.5) * 80));
+        platforms.push({ x: cursor, y: newGroundY, w: segW, h: 540 - newGroundY, type: 'ground' });
+
+        const numTrees = Math.floor(rng() * 4);
+        for (let t = 0; t < numTrees; t++) {
+          trees.push({
+            x: cursor + 10 + rng() * (segW - 20),
+            y: newGroundY,
+            scale: 0.6 + rng() * 0.7,
+            kind: Math.floor(rng() * 3)
+          });
+        }
+        for (let g = 0; g < segW / 30; g++) {
+          if (rng() < 0.5) grassDetails.push({ x: cursor + rng() * segW, y: newGroundY, len: 3 + rng() * 7 });
+        }
+
+        if (rng() < 0.3 * difficulty && segW > 100) {
+          hazards.push({ x: cursor + 30 + rng() * (segW - 60), y: newGroundY - 14, w: 16, h: 14, type: 'spike' });
+        }
+        if (rng() < 0.25 * difficulty && segW > 80) {
+          enemies.push({
+            x: cursor + segW / 2,
+            y: newGroundY - 80 - rng() * 60,
+            startY: newGroundY - 80 - rng() * 60,
+            vx: 0, vy: 0,
+            type: 'crow',
+            phase: rng() * Math.PI * 2,
+            alive: true,
+            attackCool: 0,
+          });
+        }
+        if (rng() < 0.5) {
+          collectibles.push({
+            x: cursor + 20 + rng() * (segW - 40),
+            y: newGroundY - 18,
+            w: 16, h: 16, collected: false,
+            kind: rng() < 0.25 ? 'meat' : 'orb'
+          });
+        }
+
+        if (rng() < 0.4) {
+          const sp = {
+            x: cursor + rng() * (segW - 80),
+            y: newGroundY - 100 - rng() * 80,
+            w: 60 + rng() * 60, h: 14, type: 'platform'
+          };
+          platforms.push(sp);
+          if (rng() < 0.5) {
+            collectibles.push({ x: sp.x + sp.w/2 - 8, y: sp.y - 22, w: 16, h: 16, collected: false, kind: rng() < 0.3 ? 'meat' : 'orb' });
+          }
+        }
+
+        lastGroundY = newGroundY;
+        cursor += segW;
+      }
+    }
+
+    const chunk = { idx, platforms, hazards, collectibles, trees, enemies, grassDetails };
+    chunks.set(idx, chunk);
+    return chunk;
+  }
+
+  function getActiveChunks() {
+    const camChunkStart = Math.floor(camera.x / CHUNK_W) - 1;
+    const camChunkEnd = Math.floor((camera.x + W) / CHUNK_W) + 2;
+    const arr = [];
+    for (let i = Math.max(0, camChunkStart); i <= camChunkEnd; i++) {
+      arr.push(generateChunk(i));
+    }
+    for (const k of chunks.keys()) {
+      if (k < camChunkStart - 3) chunks.delete(k);
+    }
+    return arr;
+  }
+
+  const particles = [];
+  function addParticle(p) { particles.push(p); }
+  function spawnDust(x, y) {
+    for (let i = 0; i < 3; i++) {
+      addParticle({
+        x, y,
+        vx: (Math.random() - 0.5) * 2,
+        vy: -Math.random() * 1.5,
+        life: 30 + Math.random() * 15,
+        max: 45,
+        size: 2 + Math.random() * 2,
+        color: '210, 195, 160',
+        kind: 'dust'
+      });
+    }
+  }
+  function spawnBlood(x, y) {
+    for (let i = 0; i < 12; i++) {
+      addParticle({
+        x, y,
+        vx: (Math.random() - 0.5) * 6,
+        vy: -Math.random() * 4 - 1,
+        life: 30 + Math.random() * 20,
+        max: 50,
+        size: 2 + Math.random() * 3,
+        color: '180, 30, 30',
+        kind: 'blood'
+      });
+    }
+  }
+  function spawnSparkle(x, y, color) {
+    for (let i = 0; i < 8; i++) {
+      addParticle({
+        x, y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -Math.random() * 4,
+        life: 25 + Math.random() * 20,
+        max: 45,
+        size: 2 + Math.random() * 2,
+        color,
+        kind: 'sparkle'
+      });
+    }
+  }
+
+  const stars = [];
+  for (let i = 0; i < 80; i++) {
+    stars.push({
+      x: Math.random() * W * 4,
+      y: Math.random() * H * 0.6,
+      size: Math.random() * 1.5 + 0.3,
+      twinkle: Math.random() * Math.PI * 2,
+    });
+  }
+
+  const bgMountains = [];
+  for (let i = 0; i < 200; i++) {
+    bgMountains.push({
+      x: i * 180 - 200,
+      h: 80 + Math.random() * 120,
+      w: 200 + Math.random() * 100,
+    });
+  }
+
+  const bgTrees = [];
+  for (let i = 0; i < 400; i++) {
+    bgTrees.push({
+      x: i * 70 - 100 + Math.random() * 30,
+      h: 60 + Math.random() * 80,
+      bend: (Math.random() - 0.5) * 0.3,
+    });
+  }
+
+  const GRAVITY = 0.55;
+  const MOVE_ACCEL = 0.7;
+  const MOVE_MAX = 4.2;
+  const SPRINT_MAX = 6.8;
+  const JUMP_POWER = 11.5;
+  const FRICTION = 0.82;
+  const AIR_FRICTION = 0.96;
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function update() {
+    if (state !== 'playing') return;
+
+    // Shake decay always runs (camera should keep settling even during hit-stop)
+    shakeAmp *= shakeDecay;
+    if (shakeAmp < 0.05) shakeAmp = 0;
+
+    // Hit-stop: freeze gameplay logic for a few frames on impact
+    if (hitStop > 0) { hitStop--; return; }
+
+    frame++;
+    elapsedMs = performance.now() - startTime;
+
+    const activeChunks = getActiveChunks();
+
+    const left = keys['ArrowLeft'] || keys['KeyA'] || touch.left;
+    const right = keys['ArrowRight'] || keys['KeyD'] || touch.right;
+    const jumpHeld = keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touch.jump;
+    const sprintKey = keys['ShiftLeft'] || keys['ShiftRight'] || touch.sprint;
+
+    wolf.sprinting = sprintKey && wolf.stamina > 0 && (left || right);
+    const maxSpeed = wolf.sprinting ? SPRINT_MAX : MOVE_MAX;
+
+    if (left) {
+      wolf.vx -= MOVE_ACCEL;
+      wolf.facing = -1;
+    }
+    if (right) {
+      wolf.vx += MOVE_ACCEL;
+      wolf.facing = 1;
+    }
+    if (!left && !right) {
+      wolf.vx *= wolf.onGround ? FRICTION : AIR_FRICTION;
+    }
+    wolf.vx = Math.max(-maxSpeed, Math.min(maxSpeed, wolf.vx));
+
+    if (wolf.sprinting) wolf.stamina = Math.max(0, wolf.stamina - 0.6);
+    else wolf.stamina = Math.min(100, wolf.stamina + 0.4);
+
+    if (wolf.onGround) wolf.coyote = 8;
+    else wolf.coyote = Math.max(0, wolf.coyote - 1);
+
+    const keyboardJumpEdge = jumpHeld && !wolf._jumpPrev;
+    if (keyboardJumpEdge || touch.jumpEdge) wolf.jumpBuffer = 8;
+    touch.jumpEdge = false;
+    wolf.jumpBuffer = Math.max(0, wolf.jumpBuffer - 1);
+    wolf._jumpPrev = jumpHeld;
+
+    if (wolf.jumpBuffer > 0) {
+      if (wolf.coyote > 0 || wolf.onGround) {
+        wolf.vy = -JUMP_POWER;
+        wolf.onGround = false;
+        wolf.jumps = 1;
+        wolf.jumpBuffer = 0;
+        wolf.coyote = 0;
+        wolf.squash = 1.25; wolf.squashTarget = 1; // stretch tall on launch
+        spawnDust(wolf.x + wolf.w/2, wolf.y + wolf.h);
+      } else if (wolf.jumps < wolf.maxJumps) {
+        wolf.vy = -JUMP_POWER * 0.85;
+        wolf.jumps++;
+        wolf.jumpBuffer = 0;
+        wolf.squash = 1.2; wolf.squashTarget = 1;
+        for (let i = 0; i < 8; i++) spawnDust(wolf.x + wolf.w/2 + (Math.random()-0.5)*15, wolf.y + wolf.h);
+      }
+    }
+
+    if (!jumpHeld && wolf.vy < -4) wolf.vy *= 0.85;
+
+    wolf.prevVy = wolf.vy;
+    wolf.vy += GRAVITY;
+    wolf.vy = Math.min(wolf.vy, 16);
+
+    wolf.x += wolf.vx;
+    let allPlatforms = [];
+    for (const c of activeChunks) allPlatforms = allPlatforms.concat(c.platforms);
+    for (const p of allPlatforms) {
+      if (rectsOverlap(wolf, p)) {
+        if (p.type === 'ground' || p.type === 'platform') {
+          if (wolf.vx > 0) wolf.x = p.x - wolf.w;
+          else if (wolf.vx < 0) wolf.x = p.x + p.w;
+          wolf.vx = 0;
+        }
+      }
+    }
+
+    wolf.y += wolf.vy;
+    const wasInAir = !wolf.onGround;
+    wolf.onGround = false;
+    for (const p of allPlatforms) {
+      if (rectsOverlap(wolf, p)) {
+        if (p.type === 'platform') {
+          if (wolf.vy > 0 && (wolf.y + wolf.h - wolf.vy) <= p.y + 4) {
+            wolf.y = p.y - wolf.h;
+            wolf.vy = 0;
+            wolf.onGround = true;
+            wolf.jumps = 0;
+          }
+        } else {
+          if (wolf.vy > 0) {
+            wolf.y = p.y - wolf.h;
+            wolf.vy = 0;
+            wolf.onGround = true;
+            wolf.jumps = 0;
+          } else if (wolf.vy < 0) {
+            wolf.y = p.y + p.h;
+            wolf.vy = 0;
+          }
+        }
+      }
+    }
+
+    // Landing impact: squash + shake scaled by fall speed
+    if (wasInAir && wolf.onGround) {
+      const fall = wolf.prevVy;
+      if (fall > 4) {
+        const intensity = Math.min(1, (fall - 4) / 10);
+        wolf.squash = 1 - 0.35 * intensity;   // squat down
+        wolf.squashTarget = 1;
+        if (fall > 9) {
+          addShake(2 + intensity * 4);
+          spawnDust(wolf.x + wolf.w/2 - 8, wolf.y + wolf.h);
+          spawnDust(wolf.x + wolf.w/2 + 8, wolf.y + wolf.h);
+        }
+      }
+    }
+
+    if (wolf.onGround && Math.abs(wolf.vx) > 3) {
+      wolf.dustTimer++;
+      if (wolf.dustTimer > (wolf.sprinting ? 4 : 7)) {
+        wolf.dustTimer = 0;
+        spawnDust(wolf.x + wolf.w/2 - wolf.facing * 10, wolf.y + wolf.h);
+      }
+    }
+
+    if (wolf.onGround && Math.abs(wolf.vx) > 0.5) {
+      wolf.runFrame += Math.abs(wolf.vx) * 0.08;
+    } else {
+      wolf.runFrame *= 0.9;
+    }
+
+    // Ease squash back toward 1 (neutral) — snappy but not abrupt
+    wolf.squash += (wolf.squashTarget - wolf.squash) * 0.25;
+
+    if (wolf.invuln > 0) wolf.invuln--;
+    for (const c of activeChunks) {
+      for (const h of c.hazards) {
+        if (rectsOverlap(wolf, h) && wolf.invuln <= 0) {
+          wolf.health -= 25;
+          wolf.invuln = 60;
+          wolf.vy = -8;
+          wolf.vx = -wolf.facing * 5;
+          spawnBlood(wolf.x + wolf.w/2, wolf.y + wolf.h/2);
+          addShake(7);
+          addHitStop(5);
+        }
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const it of c.collectibles) {
+        if (it.collected) continue;
+        if (rectsOverlap(wolf, it)) {
+          it.collected = true;
+          if (it.kind === 'meat') {
+            wolf.health = Math.min(100, wolf.health + 20);
+            spawnSparkle(it.x + 8, it.y + 8, '230, 90, 60');
+          } else {
+            wolf.stamina = Math.min(100, wolf.stamina + 30);
+            spawnSparkle(it.x + 8, it.y + 8, '180, 220, 255');
+          }
+        }
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const e of c.enemies) {
+        if (!e.alive) continue;
+        if (e.type === 'crow') {
+          e.phase += 0.04;
+          const dx = wolf.x - e.x;
+          const dy = wolf.y - e.y;
+          const dist = Math.hypot(dx, dy);
+          e.attackCool = Math.max(0, e.attackCool - 1);
+
+          if (dist < 220 && e.attackCool === 0) {
+            e.vx += dx / dist * 0.3;
+            e.vy += dy / dist * 0.25;
+          } else {
+            e.vx *= 0.95;
+            e.vy = Math.sin(e.phase) * 0.6 + (e.startY - e.y) * 0.02;
+          }
+          e.vx = Math.max(-4, Math.min(4, e.vx));
+          e.vy = Math.max(-3, Math.min(3, e.vy));
+          e.x += e.vx;
+          e.y += e.vy;
+
+          const eRect = { x: e.x - 14, y: e.y - 10, w: 28, h: 20 };
+          if (rectsOverlap(wolf, eRect)) {
+            if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
+              e.alive = false;
+              wolf.vy = -8;
+              wolf.jumps = Math.max(0, wolf.jumps - 1);
+              spawnBlood(e.x, e.y);
+              spawnSparkle(e.x, e.y, '50, 50, 60');
+              addShake(4);
+              addHitStop(4);
+              wolf.squash = 0.75; wolf.squashTarget = 1; // little hop squash
+            } else if (wolf.invuln <= 0) {
+              wolf.health -= 15;
+              wolf.invuln = 50;
+              wolf.vx = -dx / dist * 6;
+              wolf.vy = -6;
+              spawnBlood(wolf.x + wolf.w/2, wolf.y + wolf.h/2);
+              e.attackCool = 90;
+              e.vx = -e.vx * 0.5;
+              e.vy = -3;
+              addShake(5);
+              addHitStop(4);
+            }
+          }
+        }
+      }
+    }
+
+    if (wolf.y > 700) {
+      wolf.health = 0;
+    }
+
+    wolf.health = Math.max(0, wolf.health);
+    if (wolf.health <= 0) {
+      die();
+    }
+
+    const targetCamX = wolf.x - W * 0.35;
+    const targetCamY = wolf.y - H * 0.55;
+    camera.x += (targetCamX - camera.x) * 0.1;
+    camera.y += (targetCamY - camera.y) * 0.08;
+    camera.x = Math.max(0, camera.x);
+    camera.y = Math.min(80, camera.y);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.kind === 'blood') p.vy += 0.3;
+      else if (p.kind === 'dust') { p.vy += 0.05; p.vx *= 0.95; }
+      else if (p.kind === 'sparkle') { p.vy += 0.1; p.vx *= 0.97; }
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    document.getElementById('distance').textContent = Math.floor(wolf.x / 10) + ' m';
+    const sec = Math.floor(elapsedMs / 1000);
+    document.getElementById('timer').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+    document.getElementById('health-fill').style.width = wolf.health + '%';
+    document.getElementById('stamina-fill').style.width = wolf.stamina + '%';
+  }
+
+  function render() {
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+    skyGrad.addColorStop(0, '#0a0e1a');
+    skyGrad.addColorStop(0.5, '#1a1f30');
+    skyGrad.addColorStop(1, '#2a2535');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    for (const s of stars) {
+      const sx = ((s.x - camera.x * 0.05) % (W * 4) + W * 4) % (W * 4);
+      const sy = s.y - camera.y * 0.05;
+      const tw = 0.6 + 0.4 * Math.sin(frame * 0.05 + s.twinkle);
+      ctx.fillStyle = `rgba(255, 250, 220, ${tw * 0.9})`;
+      ctx.fillRect(sx, sy, s.size, s.size);
+    }
+
+    const moonX = W * 0.78 - camera.x * 0.02;
+    const moonY = 80 - camera.y * 0.05;
+    const moonGrad = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 80);
+    moonGrad.addColorStop(0, 'rgba(245, 236, 208, 0.4)');
+    moonGrad.addColorStop(0.3, 'rgba(245, 236, 208, 0.1)');
+    moonGrad.addColorStop(1, 'rgba(245, 236, 208, 0)');
+    ctx.fillStyle = moonGrad;
+    ctx.fillRect(moonX - 80, moonY - 80, 160, 160);
+
+    ctx.fillStyle = '#f5ecd0';
+    ctx.beginPath(); ctx.arc(moonX, moonY, 28, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a1f30';
+    ctx.beginPath(); ctx.arc(moonX + 10, moonY - 6, 22, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#1a1d28';
+    for (const m of bgMountains) {
+      const mx = m.x - camera.x * 0.2;
+      if (mx < -m.w || mx > W) continue;
+      ctx.beginPath();
+      ctx.moveTo(mx, H * 0.65);
+      ctx.lineTo(mx + m.w * 0.5, H * 0.65 - m.h);
+      ctx.lineTo(mx + m.w, H * 0.65);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#15171f';
+    for (const m of bgMountains) {
+      const mx = m.x * 1.3 - camera.x * 0.4;
+      if (mx < -m.w || mx > W) continue;
+      ctx.beginPath();
+      ctx.moveTo(mx, H * 0.72);
+      ctx.lineTo(mx + m.w * 0.5, H * 0.72 - m.h * 0.7);
+      ctx.lineTo(mx + m.w, H * 0.72);
+      ctx.fill();
+    }
+
+    for (const t of bgTrees) {
+      const tx = t.x - camera.x * 0.6;
+      if (tx < -50 || tx > W + 50) continue;
+      const ty = H * 0.78 - camera.y * 0.3;
+      ctx.fillStyle = '#0e1018';
+      ctx.fillRect(tx - 2, ty - t.h, 4, t.h);
+      ctx.beginPath();
+      ctx.moveTo(tx - 14, ty - t.h * 0.4);
+      ctx.lineTo(tx, ty - t.h - 10);
+      ctx.lineTo(tx + 14, ty - t.h * 0.4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.save();
+    const shakeX = shakeAmp > 0 ? (Math.random() - 0.5) * shakeAmp * 2 : 0;
+    const shakeY = shakeAmp > 0 ? (Math.random() - 0.5) * shakeAmp * 2 : 0;
+    ctx.translate(-Math.round(camera.x) + shakeX, -Math.round(camera.y) + shakeY);
+
+    const activeChunks = getActiveChunks();
+
+    for (const c of activeChunks) {
+      for (const t of c.trees) {
+        drawTree(t.x, t.y, t.scale, t.kind);
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const p of c.platforms) {
+        drawPlatform(p);
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const g of c.grassDetails) {
+        ctx.strokeStyle = '#2d3a2a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(g.x, g.y);
+        ctx.lineTo(g.x - 1, g.y - g.len);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(g.x + 2, g.y);
+        ctx.lineTo(g.x + 3, g.y - g.len * 0.8);
+        ctx.stroke();
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const h of c.hazards) {
+        drawSpike(h);
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const it of c.collectibles) {
+        if (it.collected) continue;
+        drawCollectible(it);
+      }
+    }
+
+    for (const c of activeChunks) {
+      for (const e of c.enemies) {
+        if (!e.alive) continue;
+        drawCrow(e);
+      }
+    }
+
+    for (const p of particles) {
+      const alpha = p.life / p.max;
+      ctx.fillStyle = `rgba(${p.color}, ${alpha})`;
+      ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    }
+
+    drawWolf();
+
+    ctx.restore();
+
+    const vGrad = ctx.createRadialGradient(W/2, H/2, H * 0.4, W/2, H/2, H * 0.85);
+    vGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    vGrad.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (frame % 2 === 0) {
+      ctx.globalAlpha = 0.04;
+      for (let i = 0; i < 60; i++) {
+        ctx.fillStyle = Math.random() < 0.5 ? '#fff' : '#000';
+        ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawPlatform(p) {
+    if (p.type === 'ground') {
+      const grad = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
+      grad.addColorStop(0, '#3a4a2e');
+      grad.addColorStop(0.08, '#2a3520');
+      grad.addColorStop(0.15, '#3d2f1e');
+      grad.addColorStop(1, '#1a1208');
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+
+      ctx.fillStyle = '#4a5e36';
+      ctx.fillRect(p.x, p.y, p.w, 4);
+      ctx.fillStyle = '#5a7042';
+      for (let i = 0; i < p.w; i += 4) {
+        if ((i + p.x) % 8 === 0) ctx.fillRect(p.x + i, p.y - 1, 2, 1);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      for (let i = 0; i < p.w; i += 12) {
+        ctx.fillRect(p.x + i + ((i*7)%9), p.y + 20 + ((i*13)%30), 2, 2);
+      }
+    } else {
+      const grad = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
+      grad.addColorStop(0, '#5a4a32');
+      grad.addColorStop(1, '#2a1f12');
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < p.w; i += 12) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + i, p.y);
+        ctx.lineTo(p.x + i, p.y + p.h);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#4a5e36';
+      ctx.fillRect(p.x, p.y, p.w, 2);
+    }
+  }
+
+  function drawTree(x, y, scale, kind) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    const h = 70 + kind * 15;
+    ctx.fillStyle = '#1a1208';
+    ctx.fillRect(-3, -h, 6, h);
+    ctx.fillStyle = '#0d0904';
+    ctx.fillRect(-3, -h, 2, h);
+
+    ctx.fillStyle = '#1f2a18';
+    for (let i = 0; i < 3 + kind; i++) {
+      const ly = -h * 0.3 - i * 18;
+      const lw = 30 - i * 4;
+      ctx.beginPath();
+      ctx.moveTo(-lw, ly);
+      ctx.lineTo(0, ly - 22);
+      ctx.lineTo(lw, ly);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#2a3a22';
+    for (let i = 0; i < 3 + kind; i++) {
+      const ly = -h * 0.3 - i * 18;
+      const lw = 30 - i * 4;
+      ctx.beginPath();
+      ctx.moveTo(-lw + 4, ly - 2);
+      ctx.lineTo(-2, ly - 18);
+      ctx.lineTo(-lw + 8, ly - 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawSpike(h) {
+    const grad = ctx.createLinearGradient(0, h.y, 0, h.y + h.h);
+    grad.addColorStop(0, '#a89978');
+    grad.addColorStop(1, '#3a2f20');
+    ctx.fillStyle = grad;
+    const spikes = Math.floor(h.w / 5);
+    for (let i = 0; i < spikes; i++) {
+      const sx = h.x + i * 5;
+      ctx.beginPath();
+      ctx.moveTo(sx, h.y + h.h);
+      ctx.lineTo(sx + 2.5, h.y);
+      ctx.lineTo(sx + 5, h.y + h.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#1a1208';
+    ctx.fillRect(h.x, h.y + h.h - 2, h.w, 2);
+  }
+
+  function drawCollectible(it) {
+    const cx = it.x + it.w/2;
+    const cy = it.y + it.h/2 + Math.sin(frame * 0.1 + it.x * 0.01) * 3;
+
+    if (it.kind === 'meat') {
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 18);
+      glow.addColorStop(0, 'rgba(230, 90, 60, 0.5)');
+      glow.addColorStop(1, 'rgba(230, 90, 60, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - 18, cy - 18, 36, 36);
+
+      ctx.fillStyle = '#8b2e1f';
+      ctx.fillRect(cx - 6, cy - 4, 12, 8);
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(cx - 5, cy - 3, 10, 4);
+      ctx.fillStyle = '#e8d9b0';
+      ctx.fillRect(cx - 6, cy + 3, 12, 1);
+      ctx.fillRect(cx - 4, cy - 5, 2, 1);
+      ctx.fillRect(cx + 2, cy - 5, 2, 1);
+    } else {
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 20);
+      glow.addColorStop(0, 'rgba(100, 200, 255, 0.6)');
+      glow.addColorStop(1, 'rgba(100, 200, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - 20, cy - 20, 40, 40);
+
+      ctx.fillStyle = '#5dade2';
+      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d6eaf8';
+      ctx.beginPath(); ctx.arc(cx - 1, cy - 1, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawCrow(e) {
+    const flap = Math.sin(frame * 0.4 + e.phase) * 0.5;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (e.vx < 0) ctx.scale(-1, 1);
+
+    ctx.fillStyle = '#0a0a0e';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#1a1a22';
+    ctx.beginPath();
+    ctx.moveTo(-2, 0);
+    ctx.quadraticCurveTo(-8, -8 + flap * 6, -16, -2 + flap * 4);
+    ctx.lineTo(-12, 2);
+    ctx.quadraticCurveTo(-6, 0, -2, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(2, 0);
+    ctx.quadraticCurveTo(8, -8 + flap * 6, 16, -2 + flap * 4);
+    ctx.lineTo(12, 2);
+    ctx.quadraticCurveTo(6, 0, 2, 0);
+    ctx.fill();
+
+    ctx.fillStyle = '#0a0a0e';
+    ctx.beginPath();
+    ctx.arc(8, -2, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#a89978';
+    ctx.beginPath();
+    ctx.moveTo(11, -2);
+    ctx.lineTo(16, -1);
+    ctx.lineTo(11, 0);
+    ctx.fill();
+
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(8, -3, 1.5, 1.5);
+
+    ctx.restore();
+  }
+
+  function drawWolf() {
+    const x = wolf.x;
+    const y = wolf.y;
+    const flicker = wolf.invuln > 0 && (frame % 6 < 3);
+    if (flicker) ctx.globalAlpha = 0.4;
+
+    ctx.save();
+    if (wolf.facing < 0) {
+      ctx.translate(x + wolf.w, y);
+      ctx.scale(-1, 1);
+    } else {
+      ctx.translate(x, y);
+    }
+
+    // Squash & stretch, pivoted at the feet (y = wolf.h). sy = squash factor,
+    // sx compensates so volume feels preserved.
+    const sy = wolf.squash;
+    const sx = 1 + (1 - sy) * 0.5;
+    ctx.translate(0, wolf.h);
+    ctx.scale(sx, sy);
+    ctx.translate(0, -wolf.h);
+
+    const t = wolf.runFrame;
+    const legA = Math.sin(t) * 4;
+    const legB = Math.sin(t + Math.PI) * 4;
+    const bodyBob = wolf.onGround ? Math.abs(Math.sin(t * 0.5)) * 1.5 : 0;
+
+    const tailWave = Math.sin(frame * 0.15) * 3;
+    ctx.fillStyle = '#3a3530';
+    ctx.beginPath();
+    ctx.moveTo(0, 10 + bodyBob);
+    ctx.quadraticCurveTo(-8, 8 + tailWave, -10, 2 + tailWave);
+    ctx.quadraticCurveTo(-6, 6, 0, 14 + bodyBob);
+    ctx.fill();
+    ctx.fillStyle = '#5a5048';
+    ctx.beginPath();
+    ctx.arc(-9, 3 + tailWave, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#2a2520';
+    ctx.fillRect(6, 18 + bodyBob, 4, 10 + legA);
+    ctx.fillRect(14, 18 + bodyBob, 4, 10 + legB);
+
+    const bodyGrad = ctx.createLinearGradient(0, 6 + bodyBob, 0, 22 + bodyBob);
+    bodyGrad.addColorStop(0, '#5a5048');
+    bodyGrad.addColorStop(0.5, '#3a3530');
+    bodyGrad.addColorStop(1, '#2a2520');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(20, 14 + bodyBob, 18, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#6a5e54';
+    ctx.beginPath();
+    ctx.ellipse(20, 18 + bodyBob, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#3a3530';
+    ctx.fillRect(28, 18 + bodyBob, 4, 10 + legB);
+    ctx.fillRect(36, 18 + bodyBob, 4, 10 + legA);
+
+    ctx.fillStyle = '#3a3530';
+    ctx.beginPath();
+    ctx.ellipse(38, 8 + bodyBob, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#2a2520';
+    ctx.beginPath();
+    ctx.ellipse(44, 11 + bodyBob, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(46, 9 + bodyBob, 3, 2);
+
+    ctx.fillStyle = '#2a2520';
+    ctx.beginPath();
+    ctx.moveTo(33, 2 + bodyBob);
+    ctx.lineTo(35, -3 + bodyBob);
+    ctx.lineTo(38, 3 + bodyBob);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(38, 2 + bodyBob);
+    ctx.lineTo(40, -3 + bodyBob);
+    ctx.lineTo(43, 3 + bodyBob);
+    ctx.fill();
+    ctx.fillStyle = '#6a4030';
+    ctx.beginPath();
+    ctx.moveTo(35, 0 + bodyBob);
+    ctx.lineTo(36, -2 + bodyBob);
+    ctx.lineTo(37, 1 + bodyBob);
+    ctx.fill();
+
+    ctx.fillStyle = '#f4c430';
+    ctx.fillRect(40, 6 + bodyBob, 2, 2);
+    ctx.fillStyle = '#fff5b8';
+    ctx.fillRect(40, 6 + bodyBob, 1, 1);
+
+    ctx.fillStyle = '#e8d9b0';
+    ctx.fillRect(46, 12 + bodyBob, 1, 1);
+
+    if (wolf.sprinting) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#f4c430';
+      ctx.fillRect(40, 6 + bodyBob, 2, 2);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function loop() {
+    update();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    state = 'playing';
+    wolf.x = 100; wolf.y = 200;
+    wolf.vx = 0; wolf.vy = 0;
+    wolf.health = 100; wolf.stamina = 100;
+    wolf.invuln = 0; wolf.jumps = 0;
+    wolf.squash = 1; wolf.squashTarget = 1; wolf.prevVy = 0;
+    camera.x = 0; camera.y = 0;
+    chunks.clear();
+    particles.length = 0;
+    shakeAmp = 0;
+    hitStop = 0;
+    seed = Math.floor(Math.random() * 1e9);
+    startTime = performance.now();
+
+    touch.left = touch.right = touch.jump = touch.sprint = false;
+    touch.jumpEdge = false;
+    document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('pressed'));
+
+    document.getElementById('overlay').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+    document.getElementById('death-screen').classList.add('hidden');
+
+    if (isMobile) {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+      if (req) {
+        req.call(el).catch(() => {});
+      }
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    }
+  }
+
+  function die() {
+    state = 'dead';
+    const finalDist = Math.floor(wolf.x / 10);
+    document.getElementById('final-dist').textContent = finalDist;
+    const sec = Math.floor(elapsedMs / 1000);
+    document.getElementById('final-time').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+
+    // High score persistence
+    let isNewRecord = false;
+    if (finalDist > highScore) {
+      highScore = finalDist;
+      isNewRecord = true;
+      try { localStorage.setItem('lupus_highscore', String(highScore)); } catch (_) {}
+    }
+    const hsEl = document.getElementById('best-dist');
+    if (hsEl) {
+      hsEl.textContent = highScore;
+      hsEl.parentElement.classList.toggle('new-record', isNewRecord);
+    }
+
+    // Death shake — final punctuation
+    addShake(10);
+
+    document.getElementById('overlay').classList.remove('hidden');
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('death-screen').classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+
+    touch.left = touch.right = touch.jump = touch.sprint = false;
+    document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('pressed'));
+  }
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('start-btn-2').addEventListener('click', startGame);
+
+  function checkOrientation() {
+    if (!isMobile) return;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    document.getElementById('rotate-prompt').classList.toggle('show', isPortrait);
+  }
+
+  function resize() {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    // Compute a scale so the game's vertical play area fits the screen.
+    // We anchor on height (BASE_H) so gameplay vertical layout stays consistent;
+    // the horizontal view simply shows more or less terrain depending on aspect ratio.
+    const yScale = winH / BASE_H;
+    // Don't let it explode on huge desktop screens
+    scale = Math.min(yScale, isMobile ? yScale : 1.6);
+
+    // Logical render size: fills the screen
+    W = winW / scale;
+    H = winH / scale;
+
+    // Backing store size in physical pixels (handles retina/pixel density)
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(winW * dpr);
+    canvas.height = Math.round(winH * dpr);
+    canvas.style.width = winW + 'px';
+    canvas.style.height = winH + 'px';
+
+    // Apply transform so 1 logical unit = `scale * dpr` pixels
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+
+    checkOrientation();
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+  // Some mobile browsers fire resize when URL bar shows/hides — handle that too
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resize);
+  }
+  resize();
+
+  loop();
+})();
+</script>
+
+</body>
+</html>
