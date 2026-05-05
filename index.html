@@ -684,6 +684,22 @@
     if (!isNaN(hs)) highScore = hs;
   } catch (_) {}
 
+  // Current biome being rendered (set each frame)
+  let currentBiome = 'forest';
+  let currentBiomeFog = 0;
+
+  // Tiny color interpolation helper for biome crossfades
+  function lerpHex(a, b, t) {
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    const ar = parseInt(a.slice(1,3), 16), ag = parseInt(a.slice(3,5), 16), ab = parseInt(a.slice(5,7), 16);
+    const br = parseInt(b.slice(1,3), 16), bg = parseInt(b.slice(3,5), 16), bb = parseInt(b.slice(5,7), 16);
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const bl = Math.round(ab + (bb - ab) * t);
+    return '#' + [r,g,bl].map(v => v.toString(16).padStart(2,'0')).join('');
+  }
+
   const touch = {
     left: false,
     right: false,
@@ -772,6 +788,72 @@
     };
   }
 
+  // Biomes: each chunk belongs to one. Determined deterministically from seed
+  // so the procedural generation stays reproducible.
+  // Each biome has a palette, hazard set, and signature enemy.
+  const BIOMES = {
+    forest: {
+      sky: ['#0a0e14', '#0f1822', '#15202e'],
+      mountainFar: '#1a1f2e',
+      mountainNear: '#2a2218',
+      ground: { top: '#3a4a2e', mid: '#3d2f1e', bot: '#1a1208' },
+      grass: '#4a5e36',
+      grassTip: '#5a7042',
+      ambient: 'firefly',
+      fogDensity: 0,
+      windForce: 0,
+    },
+    mist: {
+      sky: ['#1a1e26', '#1f2530', '#252e3c'],
+      mountainFar: '#2a3040',
+      mountainNear: '#3a3f4e',
+      ground: { top: '#3e4a3a', mid: '#3a3530', bot: '#1f1c1a' },
+      grass: '#5a6856',
+      grassTip: '#7a8876',
+      ambient: 'mist',
+      fogDensity: 1,    // 0 = none, 1 = full
+      windForce: 0,
+    },
+    burned: {
+      sky: ['#1a0808', '#240e0a', '#2e1410'],
+      mountainFar: '#1f1410',
+      mountainNear: '#2a1a14',
+      ground: { top: '#2a1e18', mid: '#1a0e08', bot: '#0a0604' },
+      grass: '#3a2418',
+      grassTip: '#5a2818',
+      ambient: 'embers',
+      fogDensity: 0,
+      windForce: 0,
+    },
+    plateau: {
+      sky: ['#0a1420', '#0f1d30', '#163048'],
+      mountainFar: '#1a2840',
+      mountainNear: '#243450',
+      ground: { top: '#4a5060', mid: '#2a3040', bot: '#0e1420'},
+      grass: '#5a6878',
+      grassTip: '#88a0b8',
+      ambient: 'snow',
+      fogDensity: 0,
+      windForce: -0.08,   // pushes player leftward
+    },
+  };
+
+  // Pick a biome for chunk index. Forest dominates; other biomes appear in
+  // bands of 2-3 chunks so the player feels distinct zones, not noise.
+  function biomeForChunk(idx) {
+    if (idx < 4) return 'forest'; // safe intro
+    // Use seed+idx to determine "band" — every band is 2-3 chunks of one biome
+    // Use a coarser seed so groups of chunks share a biome
+    const bandIdx = Math.floor(idx / 3);
+    const bandRng = mulberry32(seed + bandIdx * 17317);
+    const r = bandRng();
+    // Distribution: 55% forest, 17% mist, 14% burned, 14% plateau
+    if (r < 0.55) return 'forest';
+    if (r < 0.72) return 'mist';
+    if (r < 0.86) return 'burned';
+    return 'plateau';
+  }
+
   function generateChunk(idx) {
     if (chunks.has(idx)) return chunks.get(idx);
     const rng = mulberry32(seed + idx * 9301);
@@ -782,6 +864,7 @@
     const trees = [];
     const enemies = [];
     const grassDetails = [];
+    const biome = biomeForChunk(idx);
 
     if (idx === 0) {
       platforms.push({ x: baseX, y: 380, w: CHUNK_W, h: 160, type: 'ground' });
@@ -814,16 +897,26 @@
         }
 
         const segW = 80 + rng() * 200;
-        const newGroundY = Math.max(280, Math.min(440, lastGroundY + (rng() - 0.5) * 80));
+        // Plateau biome has more pronounced relief
+        const reliefAmp = (biome === 'plateau') ? 130 : 80;
+        const newGroundY = Math.max(280, Math.min(440, lastGroundY + (rng() - 0.5) * reliefAmp));
         platforms.push({ x: cursor, y: newGroundY, w: segW, h: 540 - newGroundY, type: 'ground' });
 
-        const numTrees = Math.floor(rng() * 4);
+        // Trees: forest dense, mist medium, burned sparse + dead-tree variant,
+        // plateau very sparse
+        const treeDensity =
+          biome === 'forest'  ? 4 :
+          biome === 'mist'    ? 3 :
+          biome === 'burned'  ? 2 :
+          /* plateau */         1;
+        const numTrees = Math.floor(rng() * treeDensity);
         for (let t = 0; t < numTrees; t++) {
           trees.push({
             x: cursor + 10 + rng() * (segW - 20),
             y: newGroundY,
             scale: 0.6 + rng() * 0.7,
-            kind: Math.floor(rng() * 3)
+            kind: Math.floor(rng() * 3),
+            biome,
           });
         }
         for (let g = 0; g < segW / 30; g++) {
@@ -833,6 +926,20 @@
         if (rng() < 0.3 * difficulty && segW > 100) {
           hazards.push({ x: cursor + 30 + rng() * (segW - 60), y: newGroundY - 14, w: 16, h: 14, type: 'spike' });
         }
+
+        // Burned biome: ember-spawner zones at the top of the chunk that
+        // periodically drop falling embers (handled per-frame in update)
+        if (biome === 'burned' && rng() < 0.4 && segW > 120) {
+          hazards.push({
+            x: cursor + 20 + rng() * (segW - 40),
+            y: newGroundY - 280,
+            w: 80, h: 8,
+            type: 'emberSpawner',
+            cool: rng() * 60,
+          });
+        }
+
+        // --- Enemies: roll for crow first (always available), then biome-specific ---
         if (rng() < 0.25 * difficulty && segW > 80) {
           enemies.push({
             x: cursor + segW / 2,
@@ -845,6 +952,55 @@
             attackCool: 0,
           });
         }
+
+        // Mist biome → owl sentinel (perched, watches a cone, summons crows)
+        if (biome === 'mist' && rng() < 0.18 + difficulty * 0.1 && segW > 100) {
+          enemies.push({
+            x: cursor + segW / 2,
+            y: newGroundY - 8,    // perched on the ground silhouette (just above)
+            type: 'owl',
+            facing: rng() < 0.5 ? 1 : -1,
+            triggered: false,
+            warnTimer: 0,
+            alive: true,
+            phase: rng() * Math.PI * 2,
+          });
+        }
+
+        // Burned biome → lucarne (slow-floating spirit that explodes if approached)
+        if (biome === 'burned' && rng() < 0.22 + difficulty * 0.1 && segW > 80) {
+          enemies.push({
+            x: cursor + 30 + rng() * (segW - 60),
+            y: newGroundY - 80 - rng() * 100,
+            startY: newGroundY - 80 - rng() * 100,
+            vx: 0, vy: 0,
+            type: 'lucarne',
+            phase: rng() * Math.PI * 2,
+            alive: true,
+            charging: false,
+            chargeTimer: 0,
+            exploded: false,
+          });
+        }
+
+        // Plateau biome → kestrel (sniper diving from the top with a beam tell)
+        if (biome === 'plateau' && rng() < 0.2 + difficulty * 0.1 && segW > 100) {
+          enemies.push({
+            x: cursor + 30 + rng() * (segW - 60),
+            y: 0,                    // off-screen top
+            anchorX: cursor + 30 + rng() * (segW - 60),
+            type: 'kestrel',
+            state: 'perched',        // perched -> aiming -> diving -> recovering
+            stateTimer: 60 + rng() * 120,
+            targetX: 0,
+            alive: true,
+          });
+        }
+
+        // Forest-style biomes (forest + mist) get the centipede on platforms
+        // (we'll actually attach it to the EXTRA aerial platform when one spawns,
+        // since it needs a platform to crawl on)
+
         if (rng() < 0.5) {
           collectibles.push({
             x: cursor + 20 + rng() * (segW - 40),
@@ -895,6 +1051,23 @@
           if (rng() < 0.5) {
             collectibles.push({ x: sp.x + sp.w/2 - 8, y: sp.y - 22, w: 16, h: 16, collected: false, kind: rng() < 0.3 ? 'meat' : 'orb' });
           }
+
+          // Forest-only: chance of a centipede patrolling around this aerial
+          // platform (only on standard, non-moving, non-crumble platforms)
+          if (biome === 'forest' && sp.type === 'platform' && rng() < 0.18 + difficulty * 0.12) {
+            enemies.push({
+              x: sp.x + sp.w / 2,
+              y: sp.y - 8,
+              type: 'centipede',
+              platform: sp,        // direct ref — chunk lifecycle keeps both alive
+              edge: 'top',         // top, right, bottom, left
+              progress: rng(),     // 0..1 along current edge
+              dir: rng() < 0.5 ? 1 : -1,
+              speed: 0.5 + rng() * 0.4,
+              phase: rng() * Math.PI * 2,
+              alive: true,
+            });
+          }
         }
 
         lastGroundY = newGroundY;
@@ -902,7 +1075,7 @@
       }
     }
 
-    const chunk = { idx, platforms, hazards, collectibles, trees, enemies, grassDetails };
+    const chunk = { idx, platforms, hazards, collectibles, trees, enemies, grassDetails, biome };
     chunks.set(idx, chunk);
     return chunk;
   }
@@ -1233,8 +1406,42 @@
     wolf.squash += (wolf.squashTarget - wolf.squash) * 0.25;
 
     if (wolf.invuln > 0) wolf.invuln--;
+
+    // Apply biome wind from the chunk the wolf is currently in.
+    // Plateau pushes leftward; also mild stamina drain via fatigue feel —
+    // but we keep it as just a movement push for clarity.
+    const wolfChunkIdx = Math.floor(wolf.x / CHUNK_W);
+    const wolfBiome = biomeForChunk(Math.max(0, wolfChunkIdx));
+    if (BIOMES[wolfBiome].windForce !== 0) {
+      wolf.vx += BIOMES[wolfBiome].windForce;
+    }
+
     for (const c of activeChunks) {
       for (const h of c.hazards) {
+        // Ember spawner: drops ember projectiles. Embers themselves live
+        // in the particles array tagged as kind 'ember' and damage on contact.
+        if (h.type === 'emberSpawner') {
+          h.cool--;
+          if (h.cool <= 0) {
+            h.cool = 80 + Math.random() * 60;
+            // Spawn 1-2 falling embers
+            const n = Math.random() < 0.4 ? 2 : 1;
+            for (let i = 0; i < n; i++) {
+              addParticle({
+                x: h.x + Math.random() * h.w,
+                y: h.y + h.h,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: 0.5 + Math.random() * 0.5,
+                size: 3,
+                color: '255, 140, 60',
+                life: 240, max: 240,
+                kind: 'ember',
+              });
+            }
+          }
+          continue; // not a damaging hazard itself, just a spawner
+        }
+        // Spike: standard contact damage
         if (rectsOverlap(wolf, h) && wolf.invuln <= 0) {
           wolf.health -= 25;
           wolf.invuln = 60;
@@ -1244,6 +1451,21 @@
           addShake(7);
           addHitStop(5);
         }
+      }
+    }
+
+    // Ember particles damage on contact (handled here so we don't iterate
+    // particles twice). Embers die on contact with ground or wolf.
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      if (p.kind !== 'ember') continue;
+      const eRect = { x: p.x - 4, y: p.y - 4, w: 8, h: 8 };
+      if (rectsOverlap(wolf, eRect) && wolf.invuln <= 0) {
+        wolf.health -= 8;
+        wolf.invuln = 30;
+        spawnBlood(p.x, p.y);
+        addShake(3);
+        particles.splice(i, 1);
       }
     }
 
@@ -1263,9 +1485,13 @@
       }
     }
 
+    // Pending enemies to spawn (buffered to avoid mutating during iteration)
+    const pendingEnemies = [];
+
     for (const c of activeChunks) {
       for (const e of c.enemies) {
         if (!e.alive) continue;
+
         if (e.type === 'crow') {
           e.phase += 0.04;
           const dx = wolf.x - e.x;
@@ -1295,7 +1521,7 @@
               spawnSparkle(e.x, e.y, '50, 50, 60');
               addShake(4);
               addHitStop(4);
-              wolf.squash = 0.75; wolf.squashTarget = 1; // little hop squash
+              wolf.squash = 0.75; wolf.squashTarget = 1;
             } else if (wolf.invuln <= 0) {
               wolf.health -= 15;
               wolf.invuln = 50;
@@ -1309,8 +1535,247 @@
               addHitStop(4);
             }
           }
+
+        } else if (e.type === 'owl') {
+          // Hibou Sentinelle: perched, scans a cone in front. If wolf enters
+          // cone for >18 frames (~0.3s), summons 3 crows.
+          e.phase += 0.02;
+          const dx = wolf.x - e.x;
+          const dy = wolf.y - e.y;
+          const dist = Math.hypot(dx, dy);
+          // Cone: 200px in facing direction, 120px tall
+          const inFront = (e.facing > 0 ? dx > 0 : dx < 0) && Math.abs(dx) < 200 && Math.abs(dy) < 120;
+          if (inFront && !e.triggered) {
+            e.warnTimer++;
+            if (e.warnTimer > 18) {
+              e.triggered = true;
+              // Summon 3 crows around the wolf's near future
+              for (let i = 0; i < 3; i++) {
+                const sx = wolf.x + 200 + i * 120;
+                const sy = 100 + Math.random() * 80;
+                pendingEnemies.push({ chunk: c, enemy: {
+                  x: sx, y: sy, startY: sy,
+                  vx: 0, vy: 0,
+                  type: 'crow',
+                  phase: Math.random() * Math.PI * 2,
+                  alive: true,
+                  attackCool: 0,
+                }});
+              }
+              addShake(3);
+            }
+          } else if (!inFront) {
+            e.warnTimer = Math.max(0, e.warnTimer - 1);
+          }
+
+          // Stomp possible (silences before triggering)
+          const eRect = { x: e.x - 14, y: e.y - 28, w: 28, h: 28 };
+          if (rectsOverlap(wolf, eRect)) {
+            if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
+              e.alive = false;
+              wolf.vy = -9;
+              wolf.jumps = Math.max(0, wolf.jumps - 1);
+              spawnBlood(e.x, e.y - 10);
+              spawnSparkle(e.x, e.y - 10, '180, 160, 100');
+              addShake(5);
+              addHitStop(5);
+              wolf.squash = 0.7; wolf.squashTarget = 1;
+            }
+            // No contact damage for owl — only crows it summons hurt
+          }
+
+        } else if (e.type === 'lucarne') {
+          // Esprit-feu: floats slowly. If wolf comes within 60px, charges
+          // for 30 frames then explodes in 6 radial sparks (kind 'lucarneSpark').
+          e.phase += 0.03;
+          if (!e.exploded) {
+            const dx = wolf.x - e.x;
+            const dy = wolf.y - e.y;
+            const dist = Math.hypot(dx, dy);
+            // Idle drift
+            e.vx = Math.sin(e.phase) * 0.4;
+            e.vy = Math.cos(e.phase * 0.7) * 0.3 + (e.startY - e.y) * 0.01;
+            e.x += e.vx;
+            e.y += e.vy;
+
+            if (dist < 60 && !e.charging) {
+              e.charging = true;
+              e.chargeTimer = 30;
+            }
+            if (e.charging) {
+              e.chargeTimer--;
+              // Stomp possible during charge — disarms safely
+              const eRect = { x: e.x - 12, y: e.y - 12, w: 24, h: 24 };
+              if (rectsOverlap(wolf, eRect)) {
+                if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
+                  e.alive = false;
+                  wolf.vy = -9;
+                  spawnSparkle(e.x, e.y, '255, 200, 100');
+                  spawnSparkle(e.x, e.y, '255, 200, 100');
+                  spawnSparkle(e.x, e.y, '255, 200, 100');
+                  addShake(4); addHitStop(4);
+                  wolf.squash = 0.7; wolf.squashTarget = 1;
+                  continue;
+                }
+              }
+              if (e.chargeTimer <= 0) {
+                e.exploded = true;
+                // Spawn 6 radial spark projectiles
+                for (let i = 0; i < 6; i++) {
+                  const ang = (i / 6) * Math.PI * 2;
+                  addParticle({
+                    x: e.x, y: e.y,
+                    vx: Math.cos(ang) * 3,
+                    vy: Math.sin(ang) * 3,
+                    size: 4,
+                    color: '255, 180, 80',
+                    life: 60, max: 60,
+                    kind: 'lucarneSpark',
+                  });
+                }
+                e.alive = false;
+                addShake(6);
+                addHitStop(3);
+              }
+            }
+          }
+
+        } else if (e.type === 'kestrel') {
+          // Crécerelle: dive sniper. State machine.
+          if (e.state === 'perched') {
+            e.x = e.anchorX;
+            e.y = camera.y - 30; // off-screen top relative to camera
+            e.stateTimer--;
+            if (e.stateTimer <= 0 && Math.abs(wolf.x - e.anchorX) < 220) {
+              e.state = 'aiming';
+              e.targetX = wolf.x + wolf.w / 2 + wolf.vx * 12;
+              e.stateTimer = 36; // 0.6s tell
+            }
+          } else if (e.state === 'aiming') {
+            e.x = e.anchorX;
+            e.y = camera.y - 30;
+            e.stateTimer--;
+            if (e.stateTimer <= 0) {
+              e.state = 'diving';
+              e.x = e.targetX;
+              e.y = camera.y - 30;
+              e.vy = 12;
+            }
+          } else if (e.state === 'diving') {
+            e.y += e.vy;
+            // Damage if it hits the wolf during dive
+            const eRect = { x: e.x - 6, y: e.y - 6, w: 12, h: 24 };
+            if (rectsOverlap(wolf, eRect) && wolf.invuln <= 0) {
+              wolf.health -= 20;
+              wolf.invuln = 60;
+              wolf.vy = -7;
+              wolf.vx = (Math.random() - 0.5) * 4;
+              spawnBlood(wolf.x + wolf.w/2, wolf.y);
+              addShake(8);
+              addHitStop(5);
+              e.state = 'recovering';
+              e.stateTimer = 90;
+            }
+            // Hits ground? Recover
+            if (e.y > 460) {
+              e.state = 'recovering';
+              e.stateTimer = 120;
+              spawnDust(e.x, e.y);
+              spawnDust(e.x - 6, e.y);
+              spawnDust(e.x + 6, e.y);
+              addShake(2);
+            }
+          } else if (e.state === 'recovering') {
+            e.stateTimer--;
+            // Drift back up
+            e.y += (camera.y - 30 - e.y) * 0.08;
+            e.x += (e.anchorX - e.x) * 0.05;
+            if (e.stateTimer <= 0) {
+              e.state = 'perched';
+              e.stateTimer = 90 + Math.random() * 90;
+            }
+          }
+
+        } else if (e.type === 'centipede') {
+          // Mille-pattes: crawls around the perimeter of its platform.
+          // Edges in order: top -> right -> bottom -> left -> top
+          const p = e.platform;
+          if (!p) { e.alive = false; continue; }
+          e.phase += 0.1;
+          // Advance progress along current edge; flip direction not used (always moves forward)
+          e.progress += e.speed / 60;
+          if (e.progress >= 1) {
+            e.progress = 0;
+            // Next edge clockwise
+            e.edge = e.edge === 'top' ? 'right'
+                   : e.edge === 'right' ? 'bottom'
+                   : e.edge === 'bottom' ? 'left'
+                   : 'top';
+          }
+          // Compute world position on the perimeter
+          if (e.edge === 'top') {
+            e.x = p.x + e.progress * p.w;
+            e.y = p.y - 6;
+          } else if (e.edge === 'right') {
+            e.x = p.x + p.w + 6;
+            e.y = p.y + e.progress * p.h;
+          } else if (e.edge === 'bottom') {
+            e.x = p.x + p.w - e.progress * p.w;
+            e.y = p.y + p.h + 6;
+          } else {
+            e.x = p.x - 6;
+            e.y = p.y + p.h - e.progress * p.h;
+          }
+
+          // If platform is moving, the centipede is carried by it because
+          // we recompute its position relative each frame.
+          // If platform crumbled and dropped far below, kill the centipede.
+          if (p.crumbled && p.y > camera.y + H + 100) { e.alive = false; continue; }
+
+          // Hitbox
+          const eRect = { x: e.x - 12, y: e.y - 5, w: 24, h: 10 };
+          if (rectsOverlap(wolf, eRect)) {
+            // Stompable only when the centipede is on the TOP edge
+            if (e.edge === 'top' && wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
+              e.alive = false;
+              wolf.vy = -8;
+              wolf.jumps = Math.max(0, wolf.jumps - 1);
+              spawnBlood(e.x, e.y);
+              spawnSparkle(e.x, e.y, '120, 200, 100');
+              addShake(3); addHitStop(3);
+              wolf.squash = 0.75; wolf.squashTarget = 1;
+            } else if (wolf.invuln <= 0) {
+              wolf.health -= 12;
+              wolf.invuln = 45;
+              wolf.vx = (wolf.x < e.x ? -1 : 1) * 5;
+              wolf.vy = -5;
+              spawnBlood(wolf.x + wolf.w/2, wolf.y + wolf.h/2);
+              addShake(4); addHitStop(3);
+            }
+          }
         }
       }
+    }
+
+    // lucarneSpark projectiles damage on contact (separate pass for clarity)
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      if (p.kind !== 'lucarneSpark') continue;
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+      const sRect = { x: p.x - 3, y: p.y - 3, w: 6, h: 6 };
+      if (rectsOverlap(wolf, sRect) && wolf.invuln <= 0) {
+        wolf.health -= 10;
+        wolf.invuln = 40;
+        spawnBlood(p.x, p.y);
+        addShake(4);
+        particles.splice(i, 1);
+      }
+    }
+
+    // Flush deferred enemy spawns now that iteration is complete
+    for (const pe of pendingEnemies) {
+      pe.chunk.enemies.push(pe.enemy);
     }
 
     if (wolf.y > 700) {
@@ -1336,6 +1801,8 @@
       if (p.kind === 'blood') p.vy += 0.3;
       else if (p.kind === 'dust') { p.vy += 0.05; p.vx *= 0.95; }
       else if (p.kind === 'sparkle') { p.vy += 0.1; p.vx *= 0.97; }
+      else if (p.kind === 'ember') { p.vy += 0.08; p.vx *= 0.98; }
+      else if (p.kind === 'lucarneSpark') { p.vy += 0.15; }
       p.life--;
       if (p.life <= 0) particles.splice(i, 1);
     }
@@ -1398,12 +1865,30 @@
   }
 
   function render() {
+    // Determine current biome based on camera center; smoothly interpolate
+    // colors with the next biome so transitions don't snap.
+    const camChunk = (camera.x + W * 0.5) / CHUNK_W;
+    const cIdx = Math.floor(camChunk);
+    const cFrac = camChunk - cIdx;
+    const biomeA = biomeForChunk(Math.max(0, cIdx));
+    const biomeB = biomeForChunk(Math.max(0, cIdx + 1));
+    const bA = BIOMES[biomeA], bB = BIOMES[biomeB];
+    // Crossfade only in last 25% of a chunk
+    const t = cFrac > 0.75 ? (cFrac - 0.75) * 4 : 0;
+    const sky0 = lerpHex(bA.sky[0], bB.sky[0], t);
+    const sky1 = lerpHex(bA.sky[1], bB.sky[1], t);
+    const sky2 = lerpHex(bA.sky[2], bB.sky[2], t);
+
     const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
-    skyGrad.addColorStop(0, '#0a0e1a');
-    skyGrad.addColorStop(0.5, '#1a1f30');
-    skyGrad.addColorStop(1, '#2a2535');
+    skyGrad.addColorStop(0, sky0);
+    skyGrad.addColorStop(0.5, sky1);
+    skyGrad.addColorStop(1, sky2);
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, W, H);
+
+    // Stash current biome for downstream draws
+    currentBiome = biomeA;
+    currentBiomeFog = bA.fogDensity * (1 - t) + bB.fogDensity * t;
 
     for (const s of stars) {
       const sx = ((s.x - camera.x * 0.05) % (W * 4) + W * 4) % (W * 4);
@@ -1472,7 +1957,7 @@
 
     for (const c of activeChunks) {
       for (const t of c.trees) {
-        drawTree(t.x, t.y, t.scale, t.kind);
+        drawTree(t.x, t.y, t.scale, t.kind, t.biome || c.biome);
       }
     }
 
@@ -1515,12 +2000,21 @@
     for (const c of activeChunks) {
       for (const e of c.enemies) {
         if (!e.alive) continue;
-        drawCrow(e);
+        if (e.type === 'crow') drawCrow(e);
+        else if (e.type === 'owl') drawOwl(e);
+        else if (e.type === 'lucarne') drawLucarne(e);
+        else if (e.type === 'kestrel') drawKestrel(e);
+        else if (e.type === 'centipede') drawCentipede(e);
       }
     }
 
     for (const p of particles) {
       const alpha = p.life / p.max;
+      if (p.kind === 'ember' || p.kind === 'lucarneSpark') {
+        // Halo for the dangerous orange projectiles
+        ctx.fillStyle = `rgba(${p.color}, ${alpha * 0.3})`;
+        ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
+      }
       ctx.fillStyle = `rgba(${p.color}, ${alpha})`;
       ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
     }
@@ -1555,6 +2049,24 @@
     ctx.fillStyle = vGrad;
     ctx.fillRect(0, 0, W, H);
 
+    // Mist biome: heavy fog around the wolf, restricting visible distance.
+    // The fog is screen-space, drawn AFTER vignette so it stacks on top.
+    if (currentBiomeFog > 0) {
+      const wolfScreenX = wolf.x - camera.x;
+      const wolfScreenY = wolf.y - camera.y + wolf.h / 2;
+      const fogIntensity = currentBiomeFog;
+      // Radial gradient: clear circle around wolf, opaque mist around
+      const fogGrad = ctx.createRadialGradient(
+        wolfScreenX, wolfScreenY, W * 0.12,    // inner clear radius
+        wolfScreenX, wolfScreenY, W * 0.55     // outer fully fogged
+      );
+      fogGrad.addColorStop(0, 'rgba(180, 188, 200, 0)');
+      fogGrad.addColorStop(0.5, `rgba(160, 170, 185, ${0.35 * fogIntensity})`);
+      fogGrad.addColorStop(1, `rgba(140, 150, 165, ${0.85 * fogIntensity})`);
+      ctx.fillStyle = fogGrad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
     if (frame % 2 === 0) {
       ctx.globalAlpha = 0.04;
       for (let i = 0; i < 60; i++) {
@@ -1567,17 +2079,23 @@
 
   function drawPlatform(p) {
     if (p.type === 'ground') {
+      // Biome palette for ground layers
+      const groundBiome = biomeForChunk(Math.max(0, Math.floor(p.x / CHUNK_W)));
+      const pal = BIOMES[groundBiome].ground;
+      const grass = BIOMES[groundBiome].grass;
+      const grassTip = BIOMES[groundBiome].grassTip;
+
       const grad = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
-      grad.addColorStop(0, '#3a4a2e');
-      grad.addColorStop(0.08, '#2a3520');
-      grad.addColorStop(0.15, '#3d2f1e');
-      grad.addColorStop(1, '#1a1208');
+      grad.addColorStop(0, pal.top);
+      grad.addColorStop(0.08, pal.top);
+      grad.addColorStop(0.15, pal.mid);
+      grad.addColorStop(1, pal.bot);
       ctx.fillStyle = grad;
       ctx.fillRect(p.x, p.y, p.w, p.h);
 
-      ctx.fillStyle = '#4a5e36';
+      ctx.fillStyle = grass;
       ctx.fillRect(p.x, p.y, p.w, 4);
-      ctx.fillStyle = '#5a7042';
+      ctx.fillStyle = grassTip;
       for (let i = 0; i < p.w; i += 4) {
         if ((i + p.x) % 8 === 0) ctx.fillRect(p.x + i, p.y - 1, 2, 1);
       }
@@ -1650,18 +2168,52 @@
     }
   }
 
-  function drawTree(x, y, scale, kind) {
+  function drawTree(x, y, scale, kind, biome) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
 
     const h = 70 + kind * 15;
-    ctx.fillStyle = '#1a1208';
-    ctx.fillRect(-3, -h, 6, h);
-    ctx.fillStyle = '#0d0904';
-    ctx.fillRect(-3, -h, 2, h);
 
-    ctx.fillStyle = '#1f2a18';
+    // Trunk
+    if (biome === 'burned') {
+      ctx.fillStyle = '#0a0604';
+      ctx.fillRect(-3, -h, 6, h);
+      ctx.fillStyle = '#1a0e08';
+      ctx.fillRect(-2, -h, 1, h);
+    } else {
+      ctx.fillStyle = '#1a1208';
+      ctx.fillRect(-3, -h, 6, h);
+      ctx.fillStyle = '#0d0904';
+      ctx.fillRect(-3, -h, 2, h);
+    }
+
+    // Foliage palette per biome
+    let foliageBase, foliageHi;
+    if (biome === 'burned') {
+      // Charred dead branches — no foliage triangles, just gnarled limbs
+      ctx.strokeStyle = '#1a0e08';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3 + kind; i++) {
+        const ly = -h * 0.3 - i * 16;
+        ctx.beginPath();
+        ctx.moveTo(0, ly);
+        ctx.lineTo(-15 - i * 2, ly - 8 - i * 3);
+        ctx.moveTo(0, ly);
+        ctx.lineTo(15 + i * 2, ly - 8 - i * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    } else if (biome === 'mist') {
+      foliageBase = '#1a2018'; foliageHi = '#28342a';
+    } else if (biome === 'plateau') {
+      foliageBase = '#1a2028'; foliageHi = '#2a3848';
+    } else { // forest
+      foliageBase = '#1f2a18'; foliageHi = '#2a3a22';
+    }
+
+    ctx.fillStyle = foliageBase;
     for (let i = 0; i < 3 + kind; i++) {
       const ly = -h * 0.3 - i * 18;
       const lw = 30 - i * 4;
@@ -1672,7 +2224,7 @@
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = '#2a3a22';
+    ctx.fillStyle = foliageHi;
     for (let i = 0; i < 3 + kind; i++) {
       const ly = -h * 0.3 - i * 18;
       const lw = 30 - i * 4;
@@ -1778,6 +2330,159 @@
 
     ctx.fillStyle = '#e74c3c';
     ctx.fillRect(8, -3, 1.5, 1.5);
+
+    ctx.restore();
+  }
+
+  function drawOwl(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    if (e.facing < 0) ctx.scale(-1, 1);
+
+    // Vision cone (only when scanning, not after triggered)
+    if (!e.triggered) {
+      const intensity = 0.06 + (e.warnTimer / 18) * 0.18;
+      ctx.fillStyle = `rgba(244, 220, 130, ${intensity})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -22);
+      ctx.lineTo(200, -22 - 60);
+      ctx.lineTo(200, -22 + 60);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Body — round, fluffy, perched silhouette
+    ctx.fillStyle = '#2a2620';
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 14, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Wing line
+    ctx.fillStyle = '#1a1612';
+    ctx.beginPath();
+    ctx.ellipse(-6, -12, 6, 12, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Head feather tufts
+    ctx.fillStyle = '#2a2620';
+    ctx.beginPath();
+    ctx.moveTo(-10, -28); ctx.lineTo(-6, -34); ctx.lineTo(-4, -28);
+    ctx.moveTo(10, -28); ctx.lineTo(6, -34); ctx.lineTo(4, -28);
+    ctx.fill();
+    // Eyes — bright when triggered, calm yellow otherwise
+    const eyeColor = e.triggered ? '#ff7a3a' : '#f4c430';
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath(); ctx.arc(-4, -22, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4, -22, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-5, -23, 2, 2);
+    ctx.fillRect(3, -23, 2, 2);
+
+    ctx.restore();
+  }
+
+  function drawLucarne(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    // Pulsing aura — bigger & redder when charging
+    const charge = e.charging ? (1 - e.chargeTimer / 30) : 0;
+    const pulse = 0.7 + 0.3 * Math.sin(e.phase * 4);
+    const r = 18 + charge * 14;
+
+    // Outer halo
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    if (charge > 0) {
+      grad.addColorStop(0, `rgba(255, 200, 80, ${0.7 * pulse})`);
+      grad.addColorStop(0.4, `rgba(255, 120, 40, ${0.4 * pulse})`);
+      grad.addColorStop(1, 'rgba(255, 80, 30, 0)');
+    } else {
+      grad.addColorStop(0, `rgba(255, 220, 130, ${0.5 * pulse})`);
+      grad.addColorStop(0.5, `rgba(244, 196, 80, ${0.2 * pulse})`);
+      grad.addColorStop(1, 'rgba(244, 196, 80, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(-r, -r, r*2, r*2);
+
+    // Bright core
+    ctx.fillStyle = charge > 0.5 ? '#fff5b8' : '#fff0c8';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4 + charge * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawKestrel(e) {
+    ctx.save();
+
+    if (e.state === 'aiming') {
+      // Beam tell from off-screen down to predicted target
+      const beamX = e.targetX;
+      const beamY = camera.y;
+      const flicker = 0.4 + 0.4 * Math.sin(frame * 0.6);
+      ctx.strokeStyle = `rgba(255, 200, 100, ${flicker})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(beamX, beamY);
+      ctx.lineTo(beamX, beamY + H + 50);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Target marker on the ground
+      ctx.fillStyle = `rgba(255, 200, 100, ${flicker})`;
+      ctx.beginPath();
+      ctx.arc(beamX, beamY + H - 30, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (e.state === 'diving' || e.state === 'recovering') {
+      ctx.translate(e.x, e.y);
+      // Streamlined diving silhouette
+      ctx.fillStyle = '#2a2018';
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(5, 8);
+      ctx.lineTo(-5, 8);
+      ctx.closePath();
+      ctx.fill();
+      // Wings folded
+      ctx.fillStyle = '#1a1410';
+      ctx.beginPath();
+      ctx.moveTo(-4, -2); ctx.lineTo(-10, 2); ctx.lineTo(-3, 4); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(4, -2); ctx.lineTo(10, 2); ctx.lineTo(3, 4); ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCentipede(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    // Orient along travel direction. We render a chain of segments behind it.
+    // Direction depends on edge.
+    let dirX = 1, dirY = 0;
+    if (e.edge === 'top') { dirX = 1; dirY = 0; }
+    else if (e.edge === 'right') { dirX = 0; dirY = 1; }
+    else if (e.edge === 'bottom') { dirX = -1; dirY = 0; }
+    else { dirX = 0; dirY = -1; }
+    const segCount = 6;
+    for (let i = 0; i < segCount; i++) {
+      const off = i * 4;
+      const sx = -dirX * off;
+      const sy = -dirY * off;
+      const wave = Math.sin(e.phase + i * 0.7) * 1.5;
+      // Body
+      ctx.fillStyle = i === 0 ? '#3a2a1a' : '#2a1f15';
+      ctx.beginPath();
+      ctx.arc(sx + (dirY ? wave : 0), sy + (dirX ? wave : 0), 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Bioluminescent dot
+      const glow = 0.5 + 0.5 * Math.sin(frame * 0.1 + i);
+      ctx.fillStyle = `rgba(140, 220, 130, ${0.4 + glow * 0.4})`;
+      ctx.fillRect(sx - 1, sy - 1, 2, 2);
+    }
+    // Head — eyes
+    ctx.fillStyle = '#ffaa44';
+    ctx.fillRect(dirX * 2 - 1, dirY * 2 - 1, 1.5, 1.5);
 
     ctx.restore();
   }
