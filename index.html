@@ -1401,28 +1401,35 @@
     if (wolf.bondCooldown > 0) wolf.bondCooldown--;
 
     const hasDirection = left || right;
+    // Direction sign (consistent with how facing is set elsewhere)
+    const inputDir = right ? 1 : (left ? -1 : 0);
 
     // Edge-detect the bond key
     const bondPressed = bondKey && !wolf._bondPrev;
     const bondReleased = !bondKey && wolf._bondPrev;
 
     // (D) chained bond: pressing while still in chain window fires immediately
-    // with reduced power, no charge needed
+    // with reduced power, no charge needed. Guard against pressing during cooldown.
     if (bondPressed && wolf.bondChainWindow > 0 && wolf.bondCooldown === 0
-        && wolf.stamina >= BOND_STAMINA_CHAIN_COST && hasDirection) {
+        && wolf.stamina >= BOND_STAMINA_CHAIN_COST && hasDirection
+        && !wolf.bondCharging) {
       fireBond(0, false, true);
     }
     // Start a fresh charge if pressing fresh and not in chain window
-    else if (bondKey && !wolf.bondCharging && wolf.bondCooldown === 0
+    else if (bondPressed && !wolf.bondCharging && wolf.bondCooldown === 0
+        && wolf.bondChainWindow === 0
         && wolf.stamina >= BOND_STAMINA_COST_MIN && hasDirection) {
       wolf.bondCharging = true;
       wolf.bondCharge = 0;
+      wolf._chargeFacing = inputDir;  // remember direction at charge start
     }
 
     // Continue charging
     if (wolf.bondCharging) {
-      // (E) cancel: if direction released or wolf takes damage, refund stamina
-      if (!hasDirection || wolf.invuln > 50) {
+      // (E) cancel: if direction released, facing flipped, or wolf takes damage
+      const facingFlipped = inputDir !== 0 && wolf._chargeFacing !== 0
+                         && inputDir !== wolf._chargeFacing;
+      if (!hasDirection || facingFlipped || wolf.invuln > 50) {
         wolf.bondCharging = false;
         wolf.bondCharge = 0;
       } else if (bondReleased) {
@@ -3000,8 +3007,8 @@
   }
 
   function loop() {
-    update();
-    render();
+    try { update(); } catch (err) { console.error('update error:', err); }
+    try { render(); } catch (err) { console.error('render error:', err); }
     requestAnimationFrame(loop);
   }
 
@@ -3018,6 +3025,7 @@
     wolf.bondTrail.length = 0;
     wolf._bondPrev = false; wolf._jumpPrev = false;
     wolf._lastBondAngle = null;
+    wolf._chargeFacing = 0;
     camera.x = 0; camera.y = 0;
     chunks.clear();
     particles.length = 0;
