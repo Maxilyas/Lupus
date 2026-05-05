@@ -471,6 +471,148 @@
     color: #fff5b8;
   }
 
+  /* === Achievement toast notification === */
+  #achievement-toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translate(-50%, -150%);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 22px 12px 16px;
+    background: linear-gradient(135deg, rgba(20,16,8,0.95), rgba(40,30,12,0.92));
+    border: 1px solid rgba(244, 196, 80, 0.6);
+    border-radius: 6px;
+    box-shadow: 0 0 30px rgba(244, 196, 80, 0.25), 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 200;
+    pointer-events: none;
+    opacity: 0;
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.2), opacity 0.4s;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    max-width: min(90vw, 420px);
+  }
+  #achievement-toast.show {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+  #achievement-toast .toast-icon {
+    font-size: 32px;
+    line-height: 1;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 8px rgba(244, 196, 80, 0.5));
+  }
+  #achievement-toast .toast-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #achievement-toast .toast-label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: #f4c430;
+    text-transform: uppercase;
+  }
+  #achievement-toast .toast-name {
+    font-family: 'Cinzel', serif;
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.1em;
+    color: #fff5b8;
+  }
+  #achievement-toast .toast-desc {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #d4c5a0;
+    opacity: 0.85;
+  }
+
+  /* === Honors screen === */
+  #honors-screen {
+    text-align: center;
+    width: min(100%, 600px);
+  }
+  #honors-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(32px, 9vw, 56px);
+    font-weight: 800;
+    letter-spacing: 0.4em;
+    color: #f4c430;
+    text-shadow: 0 0 30px rgba(244, 196, 80, 0.3);
+    margin-bottom: 6px;
+  }
+  #honors-progress {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    color: #8a7d5c;
+    margin-bottom: 18px;
+  }
+  #honors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .honor-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(20, 16, 8, 0.4);
+    border: 1px solid rgba(212, 197, 160, 0.15);
+    border-radius: 4px;
+    text-align: left;
+  }
+  .honor-row.unlocked {
+    background: linear-gradient(90deg, rgba(40, 30, 12, 0.6), rgba(20, 16, 8, 0.4));
+    border-color: rgba(244, 196, 80, 0.4);
+    box-shadow: 0 0 16px rgba(244, 196, 80, 0.08);
+  }
+  .honor-icon {
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 32px;
+    text-align: center;
+    filter: grayscale(0.85);
+    opacity: 0.4;
+  }
+  .honor-row.unlocked .honor-icon {
+    filter: drop-shadow(0 0 8px rgba(244, 196, 80, 0.4));
+    opacity: 1;
+  }
+  .honor-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .honor-name {
+    font-family: 'Cinzel', serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    color: #6a604b;
+  }
+  .honor-row.unlocked .honor-name {
+    color: #fff5b8;
+  }
+  .honor-desc {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 12px;
+    color: #4a4538;
+  }
+  .honor-row.unlocked .honor-desc {
+    color: #d4c5a0;
+  }
+
   #moon {
     position: absolute;
     top: 8%;
@@ -617,6 +759,7 @@
     </div>
     <div class="menu-line"></div>
     <button class="start-btn" id="start-btn">Begin the Hunt</button>
+    <button class="start-btn secondary" id="honors-btn">Honors</button>
   </div>
 
   <div id="death-screen" class="hidden">
@@ -626,6 +769,7 @@
     <div id="death-stats" class="best-row">Best run · <strong id="best-dist">0</strong> meters</div>
     <div class="menu-line"></div>
     <button class="start-btn" id="start-btn-2">Hunt Again</button>
+    <button class="start-btn secondary" id="honors-btn-2">Honors</button>
   </div>
 
   <div id="pause-screen" class="hidden">
@@ -636,9 +780,27 @@
     <button class="start-btn" id="resume-btn">Resume</button>
     <button class="start-btn secondary" id="quit-btn">Abandon the Hunt</button>
   </div>
+
+  <div id="honors-screen" class="hidden">
+    <div id="honors-title">HONORS</div>
+    <div id="honors-progress">— / —</div>
+    <div id="honors-list"></div>
+    <div class="menu-line"></div>
+    <button class="start-btn secondary" id="honors-back-btn">Back</button>
+  </div>
 </div>
 
 <button id="pause-btn" class="hidden" aria-label="Pause">⏸</button>
+
+<!-- Achievement notification toast — appears on unlock during gameplay -->
+<div id="achievement-toast">
+  <div class="toast-icon">🐺</div>
+  <div class="toast-text">
+    <div class="toast-label">Achievement unlocked</div>
+    <div class="toast-name">First Hunt</div>
+    <div class="toast-desc">Complete your first run</div>
+  </div>
+</div>
 
 <div id="rotate-prompt">
   <div id="rotate-icon"></div>
@@ -702,6 +864,7 @@
     bondsChained: 0,          // chained re-bonds (post-bond window)
     pickupsCollected: 0,      // meat + orbs combined
     biomesVisited: [],        // unique biome ids seen across all runs (array form for JSON)
+    unlockedAchievements: [], // array of achievement IDs unlocked
   };
 
   const Stats = (function() {
@@ -781,6 +944,100 @@
       flush: save,
     };
   })();
+
+  // ============================================================
+  // Achievements — declarative definitions + check + notification
+  // ============================================================
+  const ACHIEVEMENTS = [
+    { id: 'firstHunt',     icon: '🐺', name: 'First Hunt',
+      desc: 'Complete your first run',
+      check: s => s.runs >= 1 },
+    { id: 'centurion',     icon: '👣', name: 'Centurion',
+      desc: 'Travel 100m in a single run',
+      check: s => s.bestDistance >= 100 },
+    { id: 'firstPerfect',  icon: '✨', name: 'Threading the Needle',
+      desc: 'Land your first Perfect Bond',
+      check: s => s.bondsPerfect >= 1 },
+    { id: 'predator',      icon: '💀', name: 'Predator',
+      desc: 'Stomp 25 enemies',
+      check: s => s.enemiesStomped >= 25 },
+    { id: 'marathoner',    icon: '🏃', name: 'Marathoner',
+      desc: 'Travel 500m in a single run',
+      check: s => s.bestDistance >= 500 },
+    { id: 'wanderer',      icon: '🌍', name: 'Wanderer',
+      desc: 'Visit all 4 biomes',
+      check: s => Array.isArray(s.biomesVisited) && s.biomesVisited.length >= 4 },
+    { id: 'chainmaster',   icon: '⚡', name: 'Chainmaster',
+      desc: 'Perform 100 chained bonds',
+      check: s => s.bondsChained >= 100 },
+    { id: 'perfectionist', icon: '💫', name: 'Perfectionist',
+      desc: '50 Perfect Bonds',
+      check: s => s.bondsPerfect >= 50 },
+    { id: 'voidWalker',    icon: '🌌', name: 'Void Walker',
+      desc: 'Travel 1000m in a single run',
+      check: s => s.bestDistance >= 1000 },
+    { id: 'pilgrim',       icon: '🐾', name: 'Pilgrim',
+      desc: 'Cumulative 5000m across all runs',
+      check: s => s.totalDistance >= 5000 },
+  ];
+
+  // Lookup map for fast access by ID
+  const ACH_BY_ID = {};
+  for (const a of ACHIEVEMENTS) ACH_BY_ID[a.id] = a;
+
+  // Notification queue: only one popup at a time
+  const achNotifications = [];
+  let achNotificationActive = false;
+
+  function showAchievementToast(ach) {
+    achNotifications.push(ach);
+    if (!achNotificationActive) processNextAchievementToast();
+  }
+
+  function processNextAchievementToast() {
+    if (achNotifications.length === 0) {
+      achNotificationActive = false;
+      return;
+    }
+    achNotificationActive = true;
+    const ach = achNotifications.shift();
+    const el = document.getElementById('achievement-toast');
+    if (!el) { achNotificationActive = false; return; }
+    el.querySelector('.toast-icon').textContent = ach.icon;
+    el.querySelector('.toast-name').textContent = ach.name;
+    el.querySelector('.toast-desc').textContent = ach.desc;
+    el.classList.add('show');
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(processNextAchievementToast, 600); // cooldown between toasts
+    }, 3200);
+  }
+
+  function unlockAchievement(id) {
+    const ach = ACH_BY_ID[id];
+    if (!ach) return false;
+    const unlocked = Stats.get('unlockedAchievements') || [];
+    if (unlocked.indexOf(id) !== -1) return false;
+    unlocked.push(id);
+    Stats.set('unlockedAchievements', unlocked);
+    showAchievementToast(ach);
+    return true;
+  }
+
+  // Throttled scan: called from update loop, but only every N frames
+  let lastAchCheckFrame = -100;
+  function checkAchievements() {
+    if (frame - lastAchCheckFrame < 30) return;
+    lastAchCheckFrame = frame;
+    const stats = Stats.all();
+    const unlocked = stats.unlockedAchievements || [];
+    for (const ach of ACHIEVEMENTS) {
+      if (unlocked.indexOf(ach.id) !== -1) continue;
+      try {
+        if (ach.check(stats)) unlockAchievement(ach.id);
+      } catch (_) { /* defensive: bad check shouldn't crash gameplay */ }
+    }
+  }
 
   // Backwards-compat alias used by death screen render code
   let highScore = Stats.get('bestDistance');
@@ -2203,6 +2460,9 @@
     document.getElementById('timer').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
     document.getElementById('health-fill').style.width = wolf.health + '%';
     document.getElementById('stamina-fill').style.width = wolf.stamina + '%';
+
+    // Throttled achievement check (every ~30 frames)
+    checkAchievements();
   }
 
   function render() {
@@ -3147,6 +3407,7 @@
     document.getElementById('start-screen').classList.remove('hidden');
     document.getElementById('death-screen').classList.add('hidden');
     document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('honors-screen').classList.add('hidden');
     document.getElementById('pause-btn').classList.remove('hidden');
 
     if (isMobile) {
@@ -3185,6 +3446,7 @@
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('death-screen').classList.add('hidden');
     document.getElementById('pause-screen').classList.remove('hidden');
+    document.getElementById('honors-screen').classList.add('hidden');
     document.getElementById('pause-btn').classList.add('hidden');
   }
 
@@ -3208,6 +3470,7 @@
     document.getElementById('start-screen').classList.remove('hidden');
     document.getElementById('death-screen').classList.add('hidden');
     document.getElementById('pause-screen').classList.add('hidden');
+    document.getElementById('honors-screen').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('pause-btn').classList.add('hidden');
   }
@@ -3230,6 +3493,11 @@
     highScore = Stats.get('bestDistance');
     Stats.flush(); // make sure death is committed even if user closes app
 
+    // Force-check achievements now (bypass throttle) so distance-based ones unlock
+    // immediately on this run rather than waiting for next session
+    lastAchCheckFrame = -100;
+    checkAchievements();
+
     const hsEl = document.getElementById('best-dist');
     if (hsEl) {
       hsEl.textContent = highScore;
@@ -3242,6 +3510,7 @@
     document.getElementById('overlay').classList.remove('hidden');
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('death-screen').classList.remove('hidden');
+    document.getElementById('honors-screen').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('pause-btn').classList.add('hidden');
 
@@ -3267,6 +3536,51 @@
   bindTap(pauseBtnEl, () => pauseGame());
   bindTap(resumeBtnEl, () => resumeGame());
   bindTap(quitBtnEl, () => quitToMenu());
+
+  // Honors screen — accessible from both start and death screens.
+  // Remembers which screen we came from so Back returns there.
+  let honorsReturnTo = 'start-screen';
+
+  function openHonors(fromScreen) {
+    honorsReturnTo = fromScreen || 'start-screen';
+    renderHonorsList();
+    document.getElementById(honorsReturnTo).classList.add('hidden');
+    document.getElementById('honors-screen').classList.remove('hidden');
+  }
+
+  function closeHonors() {
+    document.getElementById('honors-screen').classList.add('hidden');
+    document.getElementById(honorsReturnTo).classList.remove('hidden');
+  }
+
+  function renderHonorsList() {
+    const unlocked = Stats.get('unlockedAchievements') || [];
+    const list = document.getElementById('honors-list');
+    list.innerHTML = '';
+    let unlockedCount = 0;
+    for (const ach of ACHIEVEMENTS) {
+      const isUnlocked = unlocked.indexOf(ach.id) !== -1;
+      if (isUnlocked) unlockedCount++;
+      const row = document.createElement('div');
+      row.className = 'honor-row' + (isUnlocked ? ' unlocked' : '');
+      // Locked achievements: keep name visible (so user knows there's something
+      // to chase) but hide the description to preserve the discovery.
+      const desc = isUnlocked ? ach.desc : '???';
+      row.innerHTML = `
+        <div class="honor-icon">${ach.icon}</div>
+        <div class="honor-text">
+          <div class="honor-name">${ach.name}</div>
+          <div class="honor-desc">${desc}</div>
+        </div>`;
+      list.appendChild(row);
+    }
+    document.getElementById('honors-progress').textContent =
+      unlockedCount + ' / ' + ACHIEVEMENTS.length;
+  }
+
+  bindTap(document.getElementById('honors-btn'),    () => openHonors('start-screen'));
+  bindTap(document.getElementById('honors-btn-2'),  () => openHonors('death-screen'));
+  bindTap(document.getElementById('honors-back-btn'), () => closeHonors());
 
   function checkOrientation() {
     if (!isMobile) return;
