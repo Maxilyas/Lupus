@@ -3203,5 +3203,22 @@
 })();
 </script>
 
+<!-- PWA: register the service worker so the app is installable and works offline -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      // The path is intentionally relative — it must be served from the same
+      // origin and scope as the page. On GitHub Pages this becomes
+      // username.github.io/repo-name/sw.js
+      navigator.serviceWorker.register('sw.js').then(function(reg) {
+        // Optional: log so you can check it worked in DevTools console
+        console.log('Service worker registered, scope:', reg.scope);
+      }).catch(function(err) {
+        console.warn('Service worker registration failed:', err);
+      });
+    });
+  }
+</script>
+
 </body>
 </html>
