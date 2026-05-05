@@ -1,72 +1,168 @@
-# LUPUS
+<div align="center">
 
-> *Survival of the Wild* — un plateformer 2D survival où tu incarnes un loup dans une forêt nocturne sans fin.
+# 🐺 LUPUS
 
-[**▶ Jouer maintenant**](https://yourname.github.io/lupus/) · [Capture d'écran](#aperçu) · [Comment jouer](#comment-jouer)
+### *Survival of the Wild*
+
+**Une nuit. Une forêt sans fin. Un loup.**
+
+[![Play Now](https://img.shields.io/badge/▶_PLAY_NOW-d4c5a0?style=for-the-badge&logoColor=black&labelColor=0a0e14)](https://maxilyas.github.io/Lupus/)
+&nbsp;
+[![PWA](https://img.shields.io/badge/PWA-Installable-f4c430?style=for-the-badge&labelColor=0a0e14)](https://maxilyas.github.io/Lupus/)
+&nbsp;
+[![Mobile](https://img.shields.io/badge/Mobile-First-c0392b?style=for-the-badge&labelColor=0a0e14)](https://maxilyas.github.io/Lupus/)
 
 ---
 
-## Aperçu
+*« Cours. Bondis. Survis. Au-delà, il n'y a que toi. »*
 
-![LUPUS — gameplay](screenshot.png)
+</div>
 
-Forêt nocturne, lune brillante, herbes hautes qui frémissent. Tu cours, tu sautes, tu chasses, tu fuis. Pas d'objectif, pas de fin — juste la distance que tu parviendras à parcourir avant que les corbeaux, les pics ou un mauvais saut ne t'arrêtent.
+<br>
 
-## Comment jouer
+## 🌒 L'expérience
 
-**Clavier**
+LUPUS est un plateformer 2D de survie cinématographique. Tu incarnes un loup mythique perdu dans une forêt nocturne infinie, où chaque mètre parcouru est arraché à la nuit. Pas de fin. Pas de victoire. Juste la **distance** que tu parviendras à conquérir avant que les pics, les corbeaux ou un mauvais bond ne t'arrêtent.
 
-| Action | Touches |
-|---|---|
-| Courir | `A` `D` ou `←` `→` |
-| Sauter / Double-saut | `Espace` `W` `↑` |
-| Sprinter | `Shift` |
-| Stomper un ennemi | Tomber dessus en plein saut |
-| Pause | `P` ou `Échap` |
+Le jeu se joue dans un seul fichier HTML. Aucun build, aucune dépendance. Juste **du Canvas, des polices choisies, et beaucoup de polish**.
 
-**Tactile (mobile)**
+<div align="center">
 
-Quatre boutons en bas de l'écran : `◀` `▶` `⚡` `▲`. Le jeu force le mode paysage et le plein écran. Bouton `⏸` en haut pour mettre en pause.
+| 🌫️ **Brume Aveugle** | 🔥 **Forêt Brûlée** | ❄️ **Hauts Plateaux** | 🌲 **Forêt Profonde** |
+|:---:|:---:|:---:|:---:|
+| Vision réduite | Braises mortelles | Vent contraire | Mille-pattes lumineux |
+| Hibou Sentinelle | Esprit-feu Lucarne | Crécerelle Sniper | Corbeaux affamés |
 
-**Survie**
+</div>
 
-- 🥩 **Viande** restaure la santé (+20)
-- 🔵 **Orbes bleues** restaurent l'endurance (+30)
-- ⚠️ **Pics** infligent 25 dégâts et te projettent en arrière
-- 🪶 **Corbeaux** plongent sur toi — saute par-dessus pour les écraser, ou esquive
+<br>
 
-## Aperçu des fonctionnalités
+## ⚡ Mécanique signature : le Bond
 
-- Génération procédurale infinie en chunks de 480px (RNG seedé)
-- Difficulté progressive : gaps plus larges, ennemis plus fréquents
-- Plateformes mobiles, plateformes qui s'effondrent au contact
-- Physique avec coyote time, jump buffer, double-saut
-- Screen shake, hit-stop, squash & stretch — gamefeel travaillé
-- Particules ambiantes : lucioles, feuilles dans le vent
-- High score local persistant
-- 4 couches de parallaxe : étoiles, lune, montagnes, arbres lointains
-- PWA installable, fonctionne hors-ligne
+Le **Bond** est le cœur du jeu. Une mécanique unique qui transforme le mouvement en danse.
 
-## Stack technique
+> **Maintiens** la touche pour viser. Ton angle monte progressivement.
+>
+> **Relâche** au bon moment pour bondir avec la puissance du prédateur.
+>
+> **Maîtrise** la zone dorée pour des **Perfect Bonds** récompensés.
 
-Mono-fichier, zéro dépendance, zéro build.
+Une trajectoire pointillée prédit ton atterrissage. Tu vois littéralement où tu vas avant de sauter. Le casual apprend par observation. L'expert chaîne des bonds parfaits qui couvrent des écrans entiers.
 
-- **HTML / CSS / JavaScript vanilla** (~1900 lignes, ~64 KB)
-- **Canvas 2D** pour le rendu, IIFE encapsulée
-- **Polices** : Cinzel + IM Fell English (Google Fonts)
-- **PWA** : manifest.json + service worker pour mode hors-ligne
-- **Mobile-first** : viewport `dvh`, fullscreen API, orientation lock
-
-Aucun framework, aucun bundler, aucun NPM. Le `index.html` est complet et exécutable seul.
-
-## Lancer le jeu localement
-
-```bash
-git clone https://github.com/yourname/lupus.git
-cd lupus
+```
+┌─────────────────────────────┐
+│  Charge → Angle             │
+│  ●●●○○○○  → 🎯 rasant       │
+│  ●●●●●○○  → ✨ PERFECT      │
+│  ●●●●●●●  → 🌙 vertical     │
+└─────────────────────────────┘
 ```
 
-Comme le service worker exige HTTPS ou localhost, ne double-clique pas le fichier — sers-le :
+<br>
+
+## 🎮 Comment jouer
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🖥️ Clavier
+
+| | |
+|---:|:---|
+| **Courir** | `A` `D` ou `←` `→` |
+| **Sauter** | `Espace` ou `↑` |
+| **Bond** | Maintenir `Shift` |
+| **Pause** | `P` ou `Échap` |
+
+</td>
+<td width="50%" valign="top">
+
+### 📱 Tactile
+
+| | |
+|---:|:---|
+| **Courir** | Boutons `◀` `▶` |
+| **Sauter** | Bouton `▲` |
+| **Bond** | Maintenir `✦` |
+| **Pause** | Bouton `⏸` |
+
+</td>
+</tr>
+</table>
+
+<br>
+
+## 🌟 Ce qui rend LUPUS spécial
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🎨 Direction artistique
+
+Forêt nocturne, lune brillante, palette dorée et ambrée sur fond bleu profond. Vignette cinématographique, grain léger, parallaxe à 4 couches. Polices **Cinzel** et **IM Fell English** pour un sentiment mythique.
+
+### 🌍 Génération procédurale
+
+Niveaux infinis générés à la volée par seed déterministe. Chaque biome a sa palette, ses ennemis, ses hazards. Plateformes mobiles, plateformes qui s'effondrent, embers qui tombent du ciel.
+
+</td>
+<td width="50%" valign="top">
+
+### 💫 Game feel travaillé
+
+Screen shake calibré, hit-stop à l'impact, squash & stretch sur chaque saut, particules ambiantes (lucioles, feuilles), step-up automatique pour un mouvement fluide.
+
+### 📱 Mobile-first
+
+Conçu pour téléphone d'abord. Boutons glassmorphism, fullscreen automatique, orientation locked en paysage. Installable comme une vraie app via PWA.
+
+</td>
+</tr>
+</table>
+
+<br>
+
+## ✨ Le Bond — en détail
+
+| Type de Bond | Comment | Effet |
+|:---|:---|:---|
+| 🎯 **Standard** | Press-release rapide | Bond rasant à pleine puissance |
+| 🌙 **Haut** | Maintenir long | Bond vertical pour atteindre les plateformes hautes |
+| ⭐ **Perfect** | Relâche dans la zone dorée | +20% portée, sparkles, stamina remboursée |
+| ⚡ **Chained** | Re-bondir dans les 0.5s | Bond instantané sans charge |
+| 🔮 **Apex** | Au sommet d'un saut | Pure horizontale à pleine puissance |
+
+<br>
+
+## 🛠️ Stack technique
+
+<div align="center">
+
+![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=flat-square&logo=html5&logoColor=white)
+![Canvas](https://img.shields.io/badge/Canvas_2D-FF6B6B?style=flat-square&logo=html5&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
+![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=flat-square&logo=pwa&logoColor=white)
+![No Build](https://img.shields.io/badge/No_Build-000?style=flat-square)
+![Zero Deps](https://img.shields.io/badge/Zero_Deps-4a5e36?style=flat-square)
+
+</div>
+
+**Mono-fichier** · **~110 KB** · **~3000 lignes** · **0 dépendance npm** · **0 framework** · **0 bundler**
+
+Tout le jeu tient dans `index.html`. Tu peux l'ouvrir dans un éditeur de texte et tout lire. C'est volontaire.
+
+<br>
+
+## 🚀 Installation locale
+
+```bash
+git clone https://github.com/maxilyas/Lupus.git
+cd Lupus
+```
+
+Le service worker exige HTTPS ou localhost. Sers le fichier au lieu de l'ouvrir directement :
 
 ```bash
 # Python 3
@@ -76,64 +172,76 @@ python3 -m http.server 8080
 npx serve .
 ```
 
-Puis ouvre `http://localhost:8080`.
+Puis ouvre `http://localhost:8080` dans ton navigateur.
 
-## Structure du projet
+<br>
+
+## 📁 Structure
 
 ```
-lupus/
-├── index.html       # Tout le jeu (HTML + CSS + JS)
+Lupus/
+├── index.html       # Le jeu complet (HTML + CSS + JS)
 ├── manifest.json    # Manifest PWA
-├── sw.js            # Service worker
+├── sw.js            # Service worker pour mode hors-ligne
 ├── icon.svg         # Icône vectorielle
-├── icon-192.png     # Icône PWA
+├── icon-192.png     # Icône PWA 192×192
+├── icon-512.png     # Icône PWA 512×512
 └── README.md
 ```
 
-## Direction artistique
+<br>
 
-Palette cinématographique nocturne :
+## 🎨 Palette signature
 
-| | |
-|---|---|
-| `#0a0e14` | Nuit profonde |
-| `#d4c5a0` | Or pâle |
-| `#4a5e36` | Vert mousse |
-| `#f4c430` | Ambre (yeux du loup) |
-| `#c0392b` | Sang |
+<table>
+<tr>
+<td align="center"><img src="https://placehold.co/80x80/0a0e14/0a0e14.png" /><br><sub><code>#0a0e14</code><br>Nuit profonde</sub></td>
+<td align="center"><img src="https://placehold.co/80x80/d4c5a0/d4c5a0.png" /><br><sub><code>#d4c5a0</code><br>Or pâle</sub></td>
+<td align="center"><img src="https://placehold.co/80x80/f4c430/f4c430.png" /><br><sub><code>#f4c430</code><br>Ambre</sub></td>
+<td align="center"><img src="https://placehold.co/80x80/4a5e36/4a5e36.png" /><br><sub><code>#4a5e36</code><br>Vert mousse</sub></td>
+<td align="center"><img src="https://placehold.co/80x80/c0392b/c0392b.png" /><br><sub><code>#c0392b</code><br>Sang</sub></td>
+</tr>
+</table>
 
-Vignette, grain léger, lune brillante. Typo : Cinzel pour les titres, IM Fell English pour le corps. Pas de couleurs vives en dehors de ces accents.
+<br>
 
-## Performance
+## 🌌 Roadmap
 
-Cible : 60 FPS stables sur Pixel 8 et équivalents.
+Quelques pistes envisagées (sans engagement) :
 
-- Génération paresseuse de chunks, cleanup des chunks éloignés
-- Culling agressif hors-écran pour plateformes, ennemis, particules
-- Cap dur sur les particules ambiantes (40 max)
-- Hit-stop implémenté en early-return dans la boucle update
+- 🎵 Audio procédural via Web Audio API
+- 🏆 Système de combo et multiplicateur de score
+- 🌍 Nouveaux biomes (canyon, ruines, marais)
+- 👹 Boss mythique après seuil de distance
+- 📅 Daily Challenge à seed fixe pour leaderboard
+- 📜 Vignettes narratives à l'approche du néant
 
-## Roadmap
+<br>
 
-Idées à explorer (sans engagement) :
+## 📜 Licence
 
-- Audio procédural via Web Audio API
-- Système de combo / multiplicateur de score
-- Biomes différents (canyon, ruines, marais)
-- Ennemis au sol (loups rivaux)
-- Boss après seuil de distance
-- Daily challenge à seed fixe
+**MIT** — fais ce que tu veux du code. Une attribution serait appréciée mais pas requise.
 
-## Licence
+<br>
 
-MIT — fais ce que tu veux du code, attribution appréciée.
+## 🐺 Crédits
 
-## Crédits
+Conçu et développé en mono-fichier, avec l'aide de **Claude** (Anthropic) pour itérer sur la mécanique de Bond, les biomes, et le polish.
 
-Conçu et développé en mono-fichier avec l'aide de Claude (Anthropic).
+Polices : [**Cinzel**](https://fonts.google.com/specimen/Cinzel) et [**IM Fell English**](https://fonts.google.com/specimen/IM+Fell+English) — Google Fonts.
 
-Polices : [Cinzel](https://fonts.google.com/specimen/Cinzel) et [IM Fell English](https://fonts.google.com/specimen/IM+Fell+English) par Google Fonts.
+<br>
 
 ---
 
-*« Au-delà, il n'y a que toi. »*
+<div align="center">
+
+### *« 100m : l'odeur de la meute s'estompe. »*
+### *« 500m : les os de tes ancêtres. »*
+### *« 1000m : au-delà, il n'y a que toi. »*
+
+<br>
+
+**[▶ Lance la chasse](https://maxilyas.github.io/Lupus/)**
+
+</div>
