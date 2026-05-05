@@ -378,50 +378,105 @@
     box-shadow: none;
   }
 
-  /* Install button — golden, more prominent than secondary, less than primary */
-  .start-btn.install-btn {
-    margin-top: 16px;
-    font-size: clamp(12px, 2.6vw, 14px);
-    letter-spacing: 0.25em;
-    border-color: rgba(244, 196, 80, 0.55);
+  /* Install App button — fixed top-left, persistent across menu/HUD */
+  #install-btn {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 150;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px 8px 10px;
+    background: linear-gradient(135deg, rgba(40, 30, 12, 0.9), rgba(20, 16, 8, 0.85));
+    border: 1px solid rgba(244, 196, 80, 0.5);
+    border-radius: 4px;
     color: #f4c430;
-    background: rgba(40, 30, 12, 0.4);
+    font-family: 'Cinzel', serif;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(244, 196, 80, 0.15), 0 4px 12px rgba(0,0,0,0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    /* Subtle pulse to draw attention without being obnoxious */
+    animation: installPulse 3s ease-in-out infinite;
   }
-  .start-btn.install-btn:hover, .start-btn.install-btn:active {
-    background: rgba(244, 196, 80, 0.1);
-    border-color: rgba(244, 196, 80, 0.9);
+  #install-btn:hover, #install-btn:active {
+    transform: translateY(-1px);
+    border-color: rgba(244, 196, 80, 0.95);
     color: #fff5b8;
-    box-shadow: 0 0 24px rgba(244, 196, 80, 0.25);
+    box-shadow: 0 0 28px rgba(244, 196, 80, 0.35), 0 6px 16px rgba(0,0,0,0.5);
+  }
+  #install-btn .install-icon {
+    font-size: 16px;
+    line-height: 1;
+    filter: drop-shadow(0 0 4px rgba(244, 196, 80, 0.5));
+  }
+  #install-btn.hidden { display: none; }
+
+  @keyframes installPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(244, 196, 80, 0.15), 0 4px 12px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 28px rgba(244, 196, 80, 0.4),  0 4px 12px rgba(0,0,0,0.4); }
   }
 
-  /* iOS install hint — shown only on Safari iOS where there's no install API */
-  .ios-install-hint {
-    margin-top: 18px;
-    padding: 10px 16px;
-    max-width: 320px;
-    background: rgba(20, 16, 8, 0.5);
-    border: 1px solid rgba(244, 196, 80, 0.25);
+  /* On very narrow screens, only show the icon to save space */
+  @media (max-width: 500px) {
+    #install-btn .install-label { display: none; }
+    #install-btn { padding: 8px 10px; }
+  }
+
+  /* iOS install hint — same top-left position as the install button */
+  #ios-install-hint {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    max-width: 360px;
+    z-index: 150;
+    background: linear-gradient(135deg, rgba(40, 30, 12, 0.95), rgba(20, 16, 8, 0.92));
+    border: 1px solid rgba(244, 196, 80, 0.5);
     border-radius: 4px;
+    box-shadow: 0 0 24px rgba(244, 196, 80, 0.2), 0 6px 16px rgba(0,0,0,0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  #ios-install-hint .ios-hint-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px 8px 12px;
     font-family: 'IM Fell English', serif;
     font-style: italic;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.4;
     color: #d4c5a0;
-    text-align: center;
   }
-  .ios-install-hint strong {
+  #ios-install-hint strong {
     color: #f4c430;
     font-style: normal;
     font-family: 'Cinzel', serif;
     font-weight: 800;
-    letter-spacing: 0.05em;
+    font-size: 11px;
+    letter-spacing: 0.1em;
   }
-  .ios-install-hint .ios-icon {
-    display: inline-block;
-    margin-right: 4px;
+  #ios-hint-close {
+    background: transparent;
+    border: none;
+    color: #8a7d5c;
+    font-size: 22px;
+    line-height: 1;
+    padding: 4px 10px;
+    cursor: pointer;
+    margin-left: auto;
+    -webkit-tap-highlight-color: transparent;
   }
-  .ios-install-hint.hidden,
-  .install-btn.hidden { display: none; }
+  #ios-hint-close:hover, #ios-hint-close:active { color: #f4c430; }
+  #ios-install-hint.hidden { display: none; }
 
   #pause-screen {
     text-align: center;
@@ -839,10 +894,6 @@
     <div class="menu-line"></div>
     <button class="start-btn" id="start-btn">Begin the Hunt</button>
     <button class="start-btn secondary" id="honors-btn">Honors</button>
-    <button class="start-btn install-btn hidden" id="install-btn">📲 Install App</button>
-    <div class="ios-install-hint hidden" id="ios-install-hint">
-      <span class="ios-icon">⬆️</span> Tap <strong>Share</strong> then <strong>Add to Home Screen</strong> to install
-    </div>
   </div>
 
   <div id="death-screen" class="hidden">
@@ -875,6 +926,22 @@
 </div>
 
 <button id="pause-btn" class="hidden" aria-label="Pause">⏸</button>
+
+<!-- Install App button — fixed top-left, always visible when PWA is installable.
+     Hidden if already installed or running in standalone mode. -->
+<button id="install-btn" class="hidden" aria-label="Install App">
+  <span class="install-icon">📲</span>
+  <span class="install-label">Install App</span>
+</button>
+
+<!-- iOS Safari hint — same position, shown only on iOS where install API doesn't exist -->
+<div id="ios-install-hint" class="hidden">
+  <div class="ios-hint-row">
+    <span>📲</span>
+    <span>Tap <strong>Share</strong> → <strong>Add to Home Screen</strong></span>
+    <button id="ios-hint-close" aria-label="Close">×</button>
+  </div>
+</div>
 
 <!-- Achievement notification toast — appears on unlock during gameplay -->
 <div id="achievement-toast">
@@ -3809,9 +3876,20 @@
     // If already running as installed app, never show install UI
     if (isStandalone) return;
 
-    // iOS path: show the manual hint
+    // iOS path: show the manual hint, unless user previously dismissed it
     if (isIOS) {
-      if (iosHint) iosHint.classList.remove('hidden');
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('lupus_ios_hint_dismissed') === '1'; } catch (_) {}
+      if (iosHint && !dismissed) iosHint.classList.remove('hidden');
+      const closeBtn = document.getElementById('ios-hint-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (iosHint) iosHint.classList.add('hidden');
+          try { localStorage.setItem('lupus_ios_hint_dismissed', '1'); } catch (_) {}
+        });
+      }
       return;
     }
 
