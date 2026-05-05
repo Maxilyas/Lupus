@@ -831,13 +831,12 @@
       wolf.vy = Math.min(wolf.vy, vyLaunch); // take the more upward of the two
     }
 
-    // Stamina cost (chained pays a flat fee, normal scales with charge,
-    // perfect gets a partial refund — the reward for mastery)
+    // Stamina cost: fixed flat cost. Perfect refunds a chunk.
     let cost;
     if (chained) {
       cost = BOND_STAMINA_CHAIN_COST;
     } else {
-      cost = BOND_STAMINA_COST_MIN + (BOND_STAMINA_COST_MAX - BOND_STAMINA_COST_MIN) * chargeRatio;
+      cost = BOND_STAMINA_COST;
       if (perfect) cost = Math.max(0, cost - BOND_STAMINA_PERFECT_REFUND);
     }
     wolf.stamina = Math.max(0, wolf.stamina - cost);
@@ -1308,33 +1307,28 @@
   const AIR_FRICTION = 0.96;
 
   // --- Bond constants ---
-  // Charge accumulates over BOND_CHARGE_FRAMES. The angle of launch grows with
-  // charge: short charge = low/flat, long charge = high/vertical. The PERFECT
-  // window sits at the ballistic-optimal angle (~40-55°) so timing the release
-  // there gives both the best feel AND the longest reach.
-  const BOND_CHARGE_FRAMES = 35;     // ~0.58s to fully charge — snappy
-  const BOND_PERFECT_START = 21;     // 60% — angle ~40°
-  const BOND_PERFECT_END = 28;       // 80% — angle ~55°
-  const BOND_MIN_FRAMES = 4;         // tiny window before micro-bonds register
-  const BOND_CHARGE_SLOW = 0.5;      // movement multiplier while charging
-  // Power is constant — the energy of a bond is the same, only the angle changes.
-  // Total launch speed = BOND_POWER. Components: vx = cos(angle)*P, vy = -sin(angle)*P
-  const BOND_POWER = 14;             // total launch speed at any angle
-  const BOND_PERFECT_BONUS = 1.20;   // perfect bond multiplier on power
-  // Angle range mapped from charge ratio (0..1). Output in radians, negative because
-  // up is negative Y in canvas coords.
+  // The bond is a powerful leap. Charge time controls ONLY the launch angle —
+  // power is constant. Release at any time to fire (no minimum charge).
+  // Hold longer to aim higher; release on the golden ring for a perfect bond.
+  const BOND_CHARGE_FRAMES = 25;     // ~0.42s to reach max angle — fast, responsive
+  const BOND_PERFECT_START = 14;     // 56% — angle ~35°
+  const BOND_PERFECT_END = 19;       // 76% — angle ~50° (ballistic optimum)
+  const BOND_CHARGE_SLOW = 0.6;      // movement multiplier while charging
+  // Power: total launch speed magnitude. Constant for all charges.
+  const BOND_POWER = 22;             // strong leap — ~150-200px range at 45°
+  const BOND_PERFECT_BONUS = 1.20;   // perfect bonus on power
+  // Angle range mapped from charge ratio (0..1).
   const BOND_ANGLE_MIN = 5 * Math.PI / 180;   // 5° — flat
   const BOND_ANGLE_MAX = 75 * Math.PI / 180;  // 75° — nearly vertical
-  const BOND_APEX_THRESHOLD = 1.5;   // |vy| <= this counts as apex
-  const BOND_APEX_FLAT_ANGLE_MAX = 30 * Math.PI / 180; // apex override only if player aimed flat
-  const BOND_CHAIN_WINDOW = 30;      // frames after a bond where re-bond is instant
-  const BOND_CHAIN_POWER = 0.85;     // chained bond multiplier
-  const BOND_COOLDOWN = 6;           // tiny lockout after firing
-  // Stamina costs — expensive enough that spam is impossible
-  const BOND_STAMINA_COST_MIN = 30;
-  const BOND_STAMINA_COST_MAX = 55;
-  const BOND_STAMINA_PERFECT_REFUND = 15; // refunded on perfect — makes mastery rewarding
-  const BOND_STAMINA_CHAIN_COST = 25;
+  const BOND_APEX_THRESHOLD = 1.5;
+  const BOND_APEX_FLAT_ANGLE_MAX = 30 * Math.PI / 180;
+  const BOND_CHAIN_WINDOW = 30;
+  const BOND_CHAIN_POWER = 0.85;
+  const BOND_COOLDOWN = 6;
+  // Stamina costs — fixed and predictable. ~3 bonds before depletion.
+  const BOND_STAMINA_COST = 35;
+  const BOND_STAMINA_PERFECT_REFUND = 18;
+  const BOND_STAMINA_CHAIN_COST = 22;
 
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -1418,10 +1412,10 @@
     // Start a fresh charge if pressing fresh and not in chain window
     else if (bondPressed && !wolf.bondCharging && wolf.bondCooldown === 0
         && wolf.bondChainWindow === 0
-        && wolf.stamina >= BOND_STAMINA_COST_MIN && hasDirection) {
+        && wolf.stamina >= BOND_STAMINA_COST && hasDirection) {
       wolf.bondCharging = true;
       wolf.bondCharge = 0;
-      wolf._chargeFacing = inputDir;  // remember direction at charge start
+      wolf._chargeFacing = inputDir;
     }
 
     // Continue charging
@@ -1433,14 +1427,10 @@
         wolf.bondCharging = false;
         wolf.bondCharge = 0;
       } else if (bondReleased) {
-        if (wolf.bondCharge >= BOND_MIN_FRAMES / BOND_CHARGE_FRAMES) {
-          const perfect = wolf.bondCharge >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
-                       && wolf.bondCharge <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
-          fireBond(wolf.bondCharge, perfect, false);
-        } else {
-          wolf.bondCharging = false;
-          wolf.bondCharge = 0;
-        }
+        // Any release fires the bond — power is constant, only angle varies
+        const perfect = wolf.bondCharge >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
+                     && wolf.bondCharge <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
+        fireBond(wolf.bondCharge, perfect, false);
       } else {
         wolf.bondCharge = Math.min(1, wolf.bondCharge + 1 / BOND_CHARGE_FRAMES);
       }
@@ -1469,9 +1459,9 @@
 
     // Speed clamping
     if (inBondAfterglow) {
-      // Allow elevated speed (up to BOND_MAX_POWER * 1.25 for perfect),
+      // Allow elevated speed (up to BOND_POWER * perfect bonus for max range),
       // but decay it gradually so the wolf returns to baseline after the bond
-      const hardCap = BOND_MAX_POWER * BOND_PERFECT_BONUS;
+      const hardCap = BOND_POWER * BOND_PERFECT_BONUS;
       wolf.vx = Math.max(-hardCap, Math.min(hardCap, wolf.vx));
       // Decay only the part above baseMaxSpeed
       if (Math.abs(wolf.vx) > baseMaxSpeed) {
@@ -2745,7 +2735,6 @@
   function drawBondTrajectory(activeChunks) {
     if (!wolf.bondCharging) return;
     const ratio = wolf.bondCharge;
-    if (ratio < BOND_MIN_FRAMES / BOND_CHARGE_FRAMES) return; // below min, no real bond
 
     const inPerfect = ratio >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
                    && ratio <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
