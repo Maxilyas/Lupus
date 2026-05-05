@@ -604,14 +604,14 @@
       <span class="desktop-only">
         Move <span class="key">A</span> <span class="key">D</span> <span style="opacity:0.5;">or</span> <span class="key">←</span> <span class="key">→</span><br>
         Jump <span class="key">SPACE</span> <span style="opacity:0.5;">or</span> <span class="key">W</span> <span class="key">↑</span><br>
-        Bond <span class="key">SHIFT</span> &nbsp;<span style="opacity:0.7;">hold + release</span><br>
-        <span style="opacity:0.7;">aim with</span> <span class="key">↑</span> <span style="opacity:0.5;">/</span> <span class="key">↓</span> <span style="opacity:0.7;">while charging</span><br>
+        Bond <span class="key">SHIFT</span> &nbsp;<span style="opacity:0.7;">hold to aim higher, release to leap</span><br>
+        <span style="opacity:0.7;">aim for the golden ring for a perfect bond</span><br>
         Pause <span class="key">P</span> <span style="opacity:0.5;">or</span> <span class="key">ESC</span>
       </span>
       <span class="mobile-only">
         Move <span class="key">◀</span> <span class="key">▶</span> &nbsp;·&nbsp; Jump <span class="key">▲</span><br>
-        Bond <span class="key">✦</span> &nbsp;<span style="opacity:0.7;">hold &amp; release</span><br>
-        <span style="opacity:0.7;">hold</span> <span class="key">▲</span> <span style="opacity:0.7;">while charging for higher arc</span><br>
+        Bond <span class="key">✦</span> &nbsp;<span style="opacity:0.7;">hold to aim higher</span><br>
+        <span style="opacity:0.7;">release on the golden ring for a perfect bond</span><br>
         <span style="opacity:0.7; font-size: 0.85em;">Best played in landscape</span>
       </span>
     </div>
@@ -786,70 +786,85 @@
     bondTrail: [],        // recent positions for visual trail when bonded recently
   };
 
-  // Fires a bond. chargeRatio is 0..1, perfect adds bonus, chained uses fixed power.
-  // upHeld/downHeld choose the launch angle.
-  function fireBond(chargeRatio, perfect, chained, upHeld, downHeld) {
-    let power;
+  // Compute the launch angle (radians, positive = up in our convention) from
+  // charge ratio. Linear interpolation between BOND_ANGLE_MIN and BOND_ANGLE_MAX.
+  function bondAngleFromCharge(ratio) {
+    return BOND_ANGLE_MIN + (BOND_ANGLE_MAX - BOND_ANGLE_MIN) * Math.max(0, Math.min(1, ratio));
+  }
+
+  // Fires a bond. chargeRatio drives both angle and (if perfect) bonus power.
+  function fireBond(chargeRatio, perfect, chained) {
+    const dir = wolf.facing;
+    let angle;          // launch angle (positive value, applied as -sin for up)
+    let power;          // total launch speed magnitude
+
     if (chained) {
-      power = BOND_MAX_POWER * BOND_CHAIN_POWER;
+      // Chained bonds reuse the angle from the most recent fired bond, with
+      // reduced power. This keeps chain rhythm visually consistent.
+      angle = wolf._lastBondAngle != null ? wolf._lastBondAngle : bondAngleFromCharge(0.5);
+      power = BOND_POWER * BOND_CHAIN_POWER;
     } else {
-      power = BOND_MIN_POWER + (BOND_MAX_POWER - BOND_MIN_POWER) * chargeRatio;
+      angle = bondAngleFromCharge(chargeRatio);
+      power = BOND_POWER;
       if (perfect) power *= BOND_PERFECT_BONUS;
     }
-    const dir = wolf.facing;
 
-    // Angle selection: up = high arc, down = flat, neither = standard arc.
-    // We blend horizontal/vertical to keep total speed roughly constant.
-    let vyKick;
-    let hMult;
-    if (upHeld) {
-      vyKick = BOND_VY_LIFT_UP;       // strong upward
-      hMult = 0.7;                    // sacrifice horizontal range for height
-    } else if (downHeld) {
-      vyKick = BOND_VY_LIFT_DOWN;     // nearly flat
-      hMult = 1.1;                    // bonus horizontal
-    } else {
-      vyKick = BOND_VY_LIFT;          // default arc
-      hMult = 1.0;
-    }
+    // Decompose into vx/vy
+    const vxLaunch = Math.cos(angle) * power * dir;
+    const vyLaunch = -Math.sin(angle) * power; // negative = upward
 
-    wolf.vx = power * hMult * dir;
-
-    // (G) Apex bond: if at jump apex, force pure horizontal regardless of up/down.
-    // This keeps the apex bond as the "expert tool" for max horizontal range.
+    // (G) Apex bond preservation: if launched at apex AND the player chose a
+    // flat angle (short charge), force pure horizontal. This rewards the
+    // expert pattern of jump → micro-charge → apex bond for max range.
+    // For longer charges, respect the player's vertical intent.
     const isApex = !wolf.onGround && Math.abs(wolf.vy) <= BOND_APEX_THRESHOLD;
-    if (isApex && !upHeld) {
-      wolf.vy = BOND_APEX_VY;
+    if (isApex && angle <= BOND_APEX_FLAT_ANGLE_MAX) {
+      wolf.vx = power * dir;   // full horizontal
+      wolf.vy = 0;
     } else if (wolf.onGround) {
-      wolf.vy = vyKick;
-    } else if (upHeld) {
-      // Mid-air with up held: still get extra lift
-      wolf.vy = Math.min(wolf.vy, vyKick);
+      wolf.vx = vxLaunch;
+      wolf.vy = vyLaunch;
+    } else {
+      // Mid-air bond: add the launch vector to current velocity instead of
+      // replacing — preserves the feel of a "boost" rather than a teleport.
+      wolf.vx = vxLaunch;             // horizontal still gets replaced (responsive)
+      wolf.vy = Math.min(wolf.vy, vyLaunch); // take the more upward of the two
     }
-    // Mid-air without up held keeps current vy
 
-    // Stamina cost (chained pays less)
-    const cost = chained
-      ? 10
-      : BOND_STAMINA_COST_MIN + (BOND_STAMINA_COST_MAX - BOND_STAMINA_COST_MIN) * chargeRatio;
+    // Stamina cost (chained pays a flat fee, normal scales with charge,
+    // perfect gets a partial refund — the reward for mastery)
+    let cost;
+    if (chained) {
+      cost = BOND_STAMINA_CHAIN_COST;
+    } else {
+      cost = BOND_STAMINA_COST_MIN + (BOND_STAMINA_COST_MAX - BOND_STAMINA_COST_MIN) * chargeRatio;
+      if (perfect) cost = Math.max(0, cost - BOND_STAMINA_PERFECT_REFUND);
+    }
     wolf.stamina = Math.max(0, wolf.stamina - cost);
 
-    // Visual: stretch the wolf forward, dust burst, sparkles
-    wolf.squash = upHeld ? 1.25 : 0.8;  // stretch up if jumping high, squash forward otherwise
+    // Visual: stretch up if the bond is high, forward if it's flat
+    if (angle > Math.PI / 4) {
+      wolf.squash = 1.25;  // stretch upward
+    } else {
+      wolf.squash = 0.85;  // squash forward
+    }
     wolf.squashTarget = 1;
+
+    // Dust: directional based on launch vector
     for (let i = 0; i < 6; i++) {
       spawnDust(wolf.x + wolf.w/2 - dir * 8, wolf.y + wolf.h - 2);
     }
     if (perfect) {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 12; i++) {
         spawnSparkle(wolf.x + wolf.w/2, wolf.y + wolf.h/2, '255, 220, 120');
       }
-      addShake(3);
+      addShake(3.5);
       addHitStop(2);
     } else if (!chained) {
       addShake(1.5);
     }
 
+    wolf._lastBondAngle = angle;
     wolf.bondChainWindow = BOND_CHAIN_WINDOW;
     wolf.bondCooldown = BOND_COOLDOWN;
     wolf.bondCharging = false;
@@ -1293,25 +1308,33 @@
   const AIR_FRICTION = 0.96;
 
   // --- Bond constants ---
-  // Charge takes BOND_CHARGE_FRAMES frames to reach max. Movement is halved while charging.
+  // Charge accumulates over BOND_CHARGE_FRAMES. The angle of launch grows with
+  // charge: short charge = low/flat, long charge = high/vertical. The PERFECT
+  // window sits at the ballistic-optimal angle (~40-55°) so timing the release
+  // there gives both the best feel AND the longest reach.
   const BOND_CHARGE_FRAMES = 35;     // ~0.58s to fully charge — snappy
-  const BOND_PERFECT_START = 28;     // perfect window opens at 80% charge
-  const BOND_PERFECT_END = 35;       // closes when fully charged (relax = perfect)
-  const BOND_MIN_FRAMES = 7;         // below this, releasing does nothing
+  const BOND_PERFECT_START = 21;     // 60% — angle ~40°
+  const BOND_PERFECT_END = 28;       // 80% — angle ~55°
+  const BOND_MIN_FRAMES = 4;         // tiny window before micro-bonds register
   const BOND_CHARGE_SLOW = 0.5;      // movement multiplier while charging
-  const BOND_MIN_POWER = 8;          // horizontal velocity at minimum charge
-  const BOND_MAX_POWER = 16;         // horizontal velocity at max charge
-  const BOND_PERFECT_BONUS = 1.25;   // perfect bond multiplier
-  const BOND_VY_LIFT = -3.5;         // default vertical kick on grounded bond
-  const BOND_VY_LIFT_UP = -10;       // strong lift when "up" is held during charge
-  const BOND_VY_LIFT_DOWN = -1;      // minimal lift when "down" is held (flat shot)
-  const BOND_APEX_VY = 0;            // apex bond: pure horizontal (no vy change beyond friction)
+  // Power is constant — the energy of a bond is the same, only the angle changes.
+  // Total launch speed = BOND_POWER. Components: vx = cos(angle)*P, vy = -sin(angle)*P
+  const BOND_POWER = 14;             // total launch speed at any angle
+  const BOND_PERFECT_BONUS = 1.20;   // perfect bond multiplier on power
+  // Angle range mapped from charge ratio (0..1). Output in radians, negative because
+  // up is negative Y in canvas coords.
+  const BOND_ANGLE_MIN = 5 * Math.PI / 180;   // 5° — flat
+  const BOND_ANGLE_MAX = 75 * Math.PI / 180;  // 75° — nearly vertical
   const BOND_APEX_THRESHOLD = 1.5;   // |vy| <= this counts as apex
-  const BOND_CHAIN_WINDOW = 30;      // frames after landing where re-bond is instant
-  const BOND_CHAIN_POWER = 0.85;     // chained bond power as fraction of charged bond
-  const BOND_COOLDOWN = 6;           // tiny cooldown after firing
-  const BOND_STAMINA_COST_MIN = 15;  // at min charge
-  const BOND_STAMINA_COST_MAX = 35;  // at max charge
+  const BOND_APEX_FLAT_ANGLE_MAX = 30 * Math.PI / 180; // apex override only if player aimed flat
+  const BOND_CHAIN_WINDOW = 30;      // frames after a bond where re-bond is instant
+  const BOND_CHAIN_POWER = 0.85;     // chained bond multiplier
+  const BOND_COOLDOWN = 6;           // tiny lockout after firing
+  // Stamina costs — expensive enough that spam is impossible
+  const BOND_STAMINA_COST_MIN = 30;
+  const BOND_STAMINA_COST_MAX = 55;
+  const BOND_STAMINA_PERFECT_REFUND = 15; // refunded on perfect — makes mastery rewarding
+  const BOND_STAMINA_CHAIN_COST = 25;
 
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -1378,13 +1401,6 @@
     if (wolf.bondCooldown > 0) wolf.bondCooldown--;
 
     const hasDirection = left || right;
-    const wasCharging = wolf.bondCharging;
-
-    // Vertical aim modifiers — read at release time, but tracked here too
-    // for the visual indicator. "Up" reuses the jump key (intuitive on both
-    // keyboard and mobile). "Down" is keyboard-only via ArrowDown / S.
-    const aimUp = jumpHeld;
-    const aimDown = keys['ArrowDown'] || keys['KeyS'];
 
     // Edge-detect the bond key
     const bondPressed = bondKey && !wolf._bondPrev;
@@ -1393,8 +1409,8 @@
     // (D) chained bond: pressing while still in chain window fires immediately
     // with reduced power, no charge needed
     if (bondPressed && wolf.bondChainWindow > 0 && wolf.bondCooldown === 0
-        && wolf.stamina >= 10 && hasDirection) {
-      fireBond(0.85, false, true, aimUp, aimDown);
+        && wolf.stamina >= BOND_STAMINA_CHAIN_COST && hasDirection) {
+      fireBond(0, false, true);
     }
     // Start a fresh charge if pressing fresh and not in chain window
     else if (bondKey && !wolf.bondCharging && wolf.bondCooldown === 0
@@ -1412,8 +1428,8 @@
       } else if (bondReleased) {
         if (wolf.bondCharge >= BOND_MIN_FRAMES / BOND_CHARGE_FRAMES) {
           const perfect = wolf.bondCharge >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
-                       && wolf.bondCharge <= 1.0;
-          fireBond(wolf.bondCharge, perfect, false, aimUp, aimDown);
+                       && wolf.bondCharge <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
+          fireBond(wolf.bondCharge, perfect, false);
         } else {
           wolf.bondCharging = false;
           wolf.bondCharge = 0;
@@ -2257,6 +2273,7 @@
     }
 
     drawBondFxBack();
+    drawBondTrajectory(activeChunks);
     drawWolf();
     drawBondFxFront();
 
@@ -2716,13 +2733,100 @@
     }
   }
 
+  // Predicted bond trajectory — a dotted parabola from the wolf to the predicted
+  // landing point. Simulates the bond physics with current charge ratio.
+  function drawBondTrajectory(activeChunks) {
+    if (!wolf.bondCharging) return;
+    const ratio = wolf.bondCharge;
+    if (ratio < BOND_MIN_FRAMES / BOND_CHARGE_FRAMES) return; // below min, no real bond
+
+    const inPerfect = ratio >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
+                   && ratio <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
+    const angle = bondAngleFromCharge(ratio);
+    const dir = wolf.facing;
+    const power = inPerfect ? BOND_POWER * BOND_PERFECT_BONUS : BOND_POWER;
+
+    // Initial state — match what fireBond does
+    const isApex = !wolf.onGround && Math.abs(wolf.vy) <= BOND_APEX_THRESHOLD;
+    const flatApex = isApex && angle <= BOND_APEX_FLAT_ANGLE_MAX;
+
+    let simX = wolf.x + wolf.w / 2;
+    let simY = wolf.y + wolf.h / 2;
+    let simVx, simVy;
+    if (flatApex) {
+      simVx = power * dir;
+      simVy = 0;
+    } else if (wolf.onGround) {
+      simVx = Math.cos(angle) * power * dir;
+      simVy = -Math.sin(angle) * power;
+    } else {
+      simVx = Math.cos(angle) * power * dir;
+      simVy = Math.min(wolf.vy, -Math.sin(angle) * power);
+    }
+
+    // Step the simulation with same physics. Cap at 80 frames or until ground hit.
+    const MAX_STEPS = 80;
+    const STEP_FRAMES = 2;  // simulate 2 frames per drawn step (40 dots max)
+    const points = [];
+    let blocked = false;
+
+    // Pre-flatten platforms once for cheaper lookup during simulation
+    const sims = [];
+    for (const c of activeChunks) {
+      for (const p of c.platforms) {
+        if (p.type === 'crumble' && p.crumbled) continue;
+        sims.push(p);
+      }
+    }
+
+    for (let step = 0; step < MAX_STEPS / STEP_FRAMES; step++) {
+      for (let s = 0; s < STEP_FRAMES; s++) {
+        simVy += GRAVITY;
+        simVy = Math.min(simVy, 16);
+        simX += simVx;
+        simY += simVy;
+      }
+      // Test against grounds for stopping point
+      for (const p of sims) {
+        // Treat as point-vs-rect for the trajectory tip
+        if (simX >= p.x && simX <= p.x + p.w && simY >= p.y && simY <= p.y + p.h) {
+          blocked = true;
+          break;
+        }
+      }
+      points.push({ x: simX, y: simY });
+      if (blocked) break;
+      // Cull if far below the camera frustum
+      if (simY > camera.y + H + 100) break;
+    }
+
+    // Draw points as a dotted line, fading toward the end
+    const baseColor = inPerfect ? '255, 245, 184' : '244, 196, 80';
+    for (let i = 0; i < points.length; i++) {
+      const t = i / Math.max(1, points.length - 1);
+      const alpha = (1 - t * 0.7) * 0.7;
+      ctx.fillStyle = `rgba(${baseColor}, ${alpha})`;
+      const r = 2;
+      ctx.fillRect(points[i].x - r, points[i].y - r, r * 2, r * 2);
+    }
+    // Landing reticle if we hit something
+    if (blocked && points.length > 0) {
+      const last = points[points.length - 1];
+      ctx.strokeStyle = `rgba(${baseColor}, 0.85)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   function drawBondFxFront() {
-    // Charge indicator: glowing arc around the wolf, intensity = charge ratio.
     if (!wolf.bondCharging) return;
     const cx = wolf.x + wolf.w / 2;
     const cy = wolf.y + wolf.h / 2;
     const ratio = wolf.bondCharge;
-    const inPerfect = ratio >= BOND_PERFECT_START / BOND_CHARGE_FRAMES && ratio <= 1.0;
+    const inPerfect = ratio >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
+                   && ratio <= BOND_PERFECT_END / BOND_CHARGE_FRAMES;
 
     // Outer halo
     const haloR = 22 + ratio * 14;
@@ -2740,44 +2844,49 @@
     ctx.fillStyle = grad;
     ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
 
-    // Charge arc (visible bar around the wolf)
+    // Charge arc — current charge progress
+    const ringR = 18;
     ctx.strokeStyle = inPerfect ? '#fff5b8' : '#f4c430';
     ctx.lineWidth = inPerfect ? 2.5 : 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, 18, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
+    ctx.arc(cx, cy, ringR, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
     ctx.stroke();
 
-    // Aim arrow: shows the predicted launch direction.
-    // Read current input state (same logic as in update). Up reuses jump.
-    const aimUp = keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touch.jump;
-    const aimDown = keys['ArrowDown'] || keys['KeyS'];
-    let angleRad;
-    if (aimUp)        angleRad = -Math.PI / 3;          // ~-60° (high arc)
-    else if (aimDown) angleRad = -0.08;                  // nearly flat
-    else              angleRad = -Math.PI / 8;          // ~-22° default
+    // Perfect zone marker on the charge ring — shows where to release
+    const perfStart = (BOND_PERFECT_START / BOND_CHARGE_FRAMES) * Math.PI * 2 - Math.PI / 2;
+    const perfEnd   = (BOND_PERFECT_END / BOND_CHARGE_FRAMES) * Math.PI * 2 - Math.PI / 2;
+    ctx.strokeStyle = inPerfect ? 'rgba(255, 245, 184, 0.95)' : 'rgba(255, 220, 130, 0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR + 3, perfStart, perfEnd);
+    ctx.stroke();
+
+    // Aim arrow: angle derived from current charge ratio
+    const angle = bondAngleFromCharge(ratio);
     const dir = wolf.facing;
-    const ax = Math.cos(angleRad) * dir;
-    const ay = Math.sin(angleRad);
-    const len = 14 + ratio * 12;
+    const ax = Math.cos(angle) * dir;
+    const ay = -Math.sin(angle); // negative = up in canvas
+    const len = 14 + ratio * 14;
     const tipX = cx + ax * len;
     const tipY = cy + ay * len;
 
     ctx.strokeStyle = inPerfect ? '#fff5b8' : '#f4c430';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(cx + ax * 8, cy + ay * 8);
+    ctx.moveTo(cx + ax * 10, cy + ay * 10);
     ctx.lineTo(tipX, tipY);
     ctx.stroke();
     // Arrowhead
-    const headLen = 4;
+    const headLen = 5;
     const perpX = -ay, perpY = ax;
     ctx.beginPath();
     ctx.moveTo(tipX, tipY);
-    ctx.lineTo(tipX - ax * headLen + perpX * headLen * 0.6, tipY - ay * headLen + perpY * headLen * 0.6);
+    ctx.lineTo(tipX - ax * headLen + perpX * headLen * 0.55, tipY - ay * headLen + perpY * headLen * 0.55);
     ctx.moveTo(tipX, tipY);
-    ctx.lineTo(tipX - ax * headLen - perpX * headLen * 0.6, tipY - ay * headLen - perpY * headLen * 0.6);
+    ctx.lineTo(tipX - ax * headLen - perpX * headLen * 0.55, tipY - ay * headLen - perpY * headLen * 0.55);
     ctx.stroke();
   }
+
 
   function drawWolf() {
     const x = wolf.x;
@@ -2908,6 +3017,7 @@
     wolf.bondChainWindow = 0; wolf.bondCooldown = 0;
     wolf.bondTrail.length = 0;
     wolf._bondPrev = false; wolf._jumpPrev = false;
+    wolf._lastBondAngle = null;
     camera.x = 0; camera.y = 0;
     chunks.clear();
     particles.length = 0;
