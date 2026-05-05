@@ -1405,9 +1405,11 @@
 
     // Movement: speed is reduced while charging
     const chargingNow = wolf.bondCharging;
-    const maxSpeed = chargingNow ? MOVE_MAX * BOND_CHARGE_SLOW : MOVE_MAX;
-    // sprinting flag kept for animation use elsewhere — true if recently bonded
-    wolf.sprinting = wolf.bondChainWindow > 0 || Math.abs(wolf.vx) > MOVE_MAX + 0.5;
+    const baseMaxSpeed = chargingNow ? MOVE_MAX * BOND_CHARGE_SLOW : MOVE_MAX;
+    // While the bond chain window is open, allow elevated speed but decay it
+    // back toward MOVE_MAX. Outside the window, hard-clamp to MOVE_MAX.
+    const inBondAfterglow = wolf.bondChainWindow > 0;
+    wolf.sprinting = inBondAfterglow;
 
     if (left) {
       wolf.vx -= MOVE_ACCEL * (chargingNow ? 0.6 : 1);
@@ -1420,20 +1422,27 @@
     if (!left && !right) {
       wolf.vx *= wolf.onGround ? FRICTION : AIR_FRICTION;
     }
-    // While charging or just-bonded, allow speeds beyond MOVE_MAX (don't clamp them down).
-    // Otherwise clamp to maxSpeed for normal running.
-    if (Math.abs(wolf.vx) <= maxSpeed) {
-      wolf.vx = Math.max(-maxSpeed, Math.min(maxSpeed, wolf.vx));
+
+    // Speed clamping
+    if (inBondAfterglow) {
+      // Allow elevated speed (up to BOND_MAX_POWER * 1.25 for perfect),
+      // but decay it gradually so the wolf returns to baseline after the bond
+      const hardCap = BOND_MAX_POWER * BOND_PERFECT_BONUS;
+      wolf.vx = Math.max(-hardCap, Math.min(hardCap, wolf.vx));
+      // Decay only the part above baseMaxSpeed
+      if (Math.abs(wolf.vx) > baseMaxSpeed) {
+        wolf.vx *= 0.985;
+      }
     } else {
-      // Decay back toward max gradually if running fast (e.g. post-bond)
-      wolf.vx *= 0.985;
+      // Normal play: strict clamp
+      wolf.vx = Math.max(-baseMaxSpeed, Math.min(baseMaxSpeed, wolf.vx));
     }
 
     // Stamina: regen when not charging
     if (!chargingNow) wolf.stamina = Math.min(100, wolf.stamina + 0.4);
 
-    // Bond trail: record positions while sprinting (post-bond) for visual effect
-    if (wolf.sprinting && frame % 2 === 0) {
+    // Bond trail: only during the chain afterglow, not just based on speed
+    if (inBondAfterglow && frame % 2 === 0) {
       wolf.bondTrail.push({ x: wolf.x, y: wolf.y, life: 18 });
       if (wolf.bondTrail.length > 12) wolf.bondTrail.shift();
     }
