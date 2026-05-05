@@ -576,7 +576,11 @@
     flex: 1 1 auto;
     min-height: 0;       /* essential for flex children to scroll */
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    /* Override body's touch-action: none so finger drag scrolls the list */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
     padding: 4px 8px;
     width: 100%;
     box-sizing: border-box;
@@ -808,6 +812,7 @@
     <div id="death-stats">Time · <strong id="pause-time">0:00</strong></div>
     <div class="menu-line"></div>
     <button class="start-btn" id="resume-btn">Resume</button>
+    <button class="start-btn secondary" id="honors-btn-3">Honors</button>
     <button class="start-btn secondary" id="quit-btn">Abandon the Hunt</button>
   </div>
 
@@ -1174,6 +1179,16 @@
   document.addEventListener('contextmenu', e => e.preventDefault());
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('touchmove', e => {
+    // Allow vertical scrolling inside elements explicitly marked scrollable
+    // (honors list, future scrollable overlays). preventDefault on the rest
+    // to keep the body locked.
+    let n = e.target;
+    while (n && n !== document.body) {
+      if (n.id === 'honors-list' || (n.classList && n.classList.contains('scrollable'))) {
+        return; // let the browser handle the scroll
+      }
+      n = n.parentNode;
+    }
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
 
@@ -3584,9 +3599,6 @@
     document.querySelectorAll('.touch-btn').forEach(b => b.classList.remove('pressed'));
   }
 
-  document.getElementById('start-btn').addEventListener('click', startGame);
-  document.getElementById('start-btn-2').addEventListener('click', startGame);
-
   // Pause UI
   const pauseBtnEl = document.getElementById('pause-btn');
   const resumeBtnEl = document.getElementById('resume-btn');
@@ -3602,14 +3614,24 @@
       e.preventDefault();
       e.stopPropagation();
       if (performance.now() < tapLockUntil) return;
-      // After firing, lock briefly so the synthetic click event or pointerdown
-      // on a newly-revealed underneath button doesn't fire too.
-      tapLockUntil = performance.now() + 350;
+      tapLockUntil = performance.now() + 400;
       fn();
     };
     el.addEventListener('pointerdown', h);
-    el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (performance.now() < tapLockUntil) return;
+      // Fallback for environments where pointerdown didn't fire (rare)
+    });
   };
+
+  // Start buttons go through bindTap so the global tap lock applies to them
+  // too — otherwise quitToMenu reveals start-btn in the same spot the user
+  // just tapped, and the synthetic click immediately starts a new run.
+  bindTap(document.getElementById('start-btn'), startGame);
+  bindTap(document.getElementById('start-btn-2'), startGame);
+
   bindTap(pauseBtnEl, () => pauseGame());
   bindTap(resumeBtnEl, () => resumeGame());
   bindTap(quitBtnEl, () => quitToMenu());
@@ -3657,6 +3679,7 @@
 
   bindTap(document.getElementById('honors-btn'),    () => openHonors('start-screen'));
   bindTap(document.getElementById('honors-btn-2'),  () => openHonors('death-screen'));
+  bindTap(document.getElementById('honors-btn-3'),  () => openHonors('pause-screen'));
   bindTap(document.getElementById('honors-back-btn'), () => closeHonors());
 
   function checkOrientation() {
