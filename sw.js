@@ -1,7 +1,7 @@
 // LUPUS service worker — enables offline play and PWA install
 // Bump this version every time you ship a new index.html so users get the
 // fresh build instead of the stale cache.
-const CACHE_VERSION = 'lupus-v1';
+const CACHE_VERSION = 'lupus-v2';
 
 // Files to pre-cache so the app boots offline on first visit.
 // Use relative paths so this works under GitHub Pages subdirectories

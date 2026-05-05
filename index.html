@@ -378,6 +378,51 @@
     box-shadow: none;
   }
 
+  /* Install button — golden, more prominent than secondary, less than primary */
+  .start-btn.install-btn {
+    margin-top: 16px;
+    font-size: clamp(12px, 2.6vw, 14px);
+    letter-spacing: 0.25em;
+    border-color: rgba(244, 196, 80, 0.55);
+    color: #f4c430;
+    background: rgba(40, 30, 12, 0.4);
+  }
+  .start-btn.install-btn:hover, .start-btn.install-btn:active {
+    background: rgba(244, 196, 80, 0.1);
+    border-color: rgba(244, 196, 80, 0.9);
+    color: #fff5b8;
+    box-shadow: 0 0 24px rgba(244, 196, 80, 0.25);
+  }
+
+  /* iOS install hint — shown only on Safari iOS where there's no install API */
+  .ios-install-hint {
+    margin-top: 18px;
+    padding: 10px 16px;
+    max-width: 320px;
+    background: rgba(20, 16, 8, 0.5);
+    border: 1px solid rgba(244, 196, 80, 0.25);
+    border-radius: 4px;
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d4c5a0;
+    text-align: center;
+  }
+  .ios-install-hint strong {
+    color: #f4c430;
+    font-style: normal;
+    font-family: 'Cinzel', serif;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+  }
+  .ios-install-hint .ios-icon {
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .ios-install-hint.hidden,
+  .install-btn.hidden { display: none; }
+
   #pause-screen {
     text-align: center;
   }
@@ -794,6 +839,10 @@
     <div class="menu-line"></div>
     <button class="start-btn" id="start-btn">Begin the Hunt</button>
     <button class="start-btn secondary" id="honors-btn">Honors</button>
+    <button class="start-btn install-btn hidden" id="install-btn">📲 Install App</button>
+    <div class="ios-install-hint hidden" id="ios-install-hint">
+      <span class="ios-icon">⬆️</span> Tap <strong>Share</strong> then <strong>Add to Home Screen</strong> to install
+    </div>
   </div>
 
   <div id="death-screen" class="hidden">
@@ -3732,17 +3781,72 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      // The path is intentionally relative — it must be served from the same
-      // origin and scope as the page. On GitHub Pages this becomes
-      // username.github.io/repo-name/sw.js
       navigator.serviceWorker.register('sw.js').then(function(reg) {
-        // Optional: log so you can check it worked in DevTools console
         console.log('Service worker registered, scope:', reg.scope);
       }).catch(function(err) {
         console.warn('Service worker registration failed:', err);
       });
     });
   }
+
+  // ============================================================
+  // Install prompt — capture beforeinstallprompt and surface our own
+  // button so users can install on demand. Chrome's native prompt is
+  // unreliable; this gives us full control.
+  // ============================================================
+  (function() {
+    let deferredPrompt = null;
+    const installBtn = document.getElementById('install-btn');
+    const iosHint = document.getElementById('ios-install-hint');
+
+    // Detect iOS Safari (it doesn't support beforeinstallprompt — users have
+    // to install manually via Share → Add to Home Screen).
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                      || window.matchMedia('(display-mode: fullscreen)').matches
+                      || window.navigator.standalone === true;
+
+    // If already running as installed app, never show install UI
+    if (isStandalone) return;
+
+    // iOS path: show the manual hint
+    if (isIOS) {
+      if (iosHint) iosHint.classList.remove('hidden');
+      return;
+    }
+
+    // Other browsers: wait for beforeinstallprompt to fire, then enable button
+    window.addEventListener('beforeinstallprompt', function(e) {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      deferredPrompt = e;
+      if (installBtn) installBtn.classList.remove('hidden');
+      console.log('PWA install prompt captured — install button revealed');
+    });
+
+    if (installBtn) {
+      const trigger = function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(choice) {
+          console.log('Install choice:', choice.outcome);
+          deferredPrompt = null;
+          installBtn.classList.add('hidden');
+        });
+      };
+      installBtn.addEventListener('click', trigger);
+      installBtn.addEventListener('pointerdown', trigger);
+    }
+
+    // Hide button if app gets installed during this session
+    window.addEventListener('appinstalled', function() {
+      if (installBtn) installBtn.classList.add('hidden');
+      deferredPrompt = null;
+      console.log('PWA installed');
+    });
+  })();
 </script>
 
 </body>
