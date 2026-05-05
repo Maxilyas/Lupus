@@ -256,13 +256,12 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Inner wrapper handles centering. min-height + margin:auto means content
-     centers when it fits, but flows naturally (and stays scrollable) when it
-     doesn't — fixes the "Begin the Hunt" button cut off in landscape. */
+  /* Inner wrappers: shared layout. Honors-screen handles its own min-height
+     because it needs to stay smaller than viewport for internal scroll. */
   #overlay > #start-screen,
   #overlay > #death-screen,
-  #overlay > #pause-screen {
-    min-height: 100%;
+  #overlay > #pause-screen,
+  #overlay > #honors-screen {
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -270,6 +269,12 @@
     justify-content: center;
     padding: clamp(16px, 4vh, 40px) 20px;
     box-sizing: border-box;
+  }
+  /* Only the non-scrollable screens get the full-height centering trick */
+  #overlay > #start-screen,
+  #overlay > #death-screen,
+  #overlay > #pause-screen {
+    min-height: 100%;
   }
 
   #overlay.hidden {
@@ -533,33 +538,57 @@
   /* === Honors screen === */
   #honors-screen {
     text-align: center;
-    width: min(100%, 600px);
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    /* Override the overlay inner wrapper's min-height behavior so the list
+       can scroll instead of being pushed off-screen. */
+    min-height: 0 !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Constrain to viewport so the inner list can scroll */
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
   }
   #honors-title {
     font-family: 'Cinzel', serif;
-    font-size: clamp(32px, 9vw, 56px);
+    font-size: clamp(28px, 7vw, 48px);
     font-weight: 800;
     letter-spacing: 0.4em;
     color: #f4c430;
     text-shadow: 0 0 30px rgba(244, 196, 80, 0.3);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
   }
   #honors-progress {
     font-family: 'Cinzel', serif;
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 0.3em;
     color: #8a7d5c;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
   }
   #honors-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 50vh;
+    flex: 1 1 auto;
+    min-height: 0;       /* essential for flex children to scroll */
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 4px 8px;
     width: 100%;
     box-sizing: border-box;
+    /* Subtle gradient mask hints there's more content below */
+    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 12px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 12px), transparent 100%);
+  }
+  #honors-screen .menu-line {
+    flex-shrink: 0;
+  }
+  #honors-screen #honors-back-btn {
+    flex-shrink: 0;
   }
   .honor-row {
     display: flex;
@@ -570,6 +599,7 @@
     border: 1px solid rgba(212, 197, 160, 0.15);
     border-radius: 4px;
     text-align: left;
+    flex-shrink: 0;
   }
   .honor-row.unlocked {
     background: linear-gradient(90deg, rgba(40, 30, 12, 0.6), rgba(20, 16, 8, 0.4));
@@ -949,6 +979,7 @@
   // Achievements — declarative definitions + check + notification
   // ============================================================
   const ACHIEVEMENTS = [
+    // ─── Tier 1: introduction (immediate / first runs) ───────────
     { id: 'firstHunt',     icon: '🐺', name: 'First Hunt',
       desc: 'Complete your first run',
       check: s => s.runs >= 1 },
@@ -961,6 +992,8 @@
     { id: 'predator',      icon: '💀', name: 'Predator',
       desc: 'Stomp 25 enemies',
       check: s => s.enemiesStomped >= 25 },
+
+    // ─── Tier 2: solid progression (a few hours of play) ─────────
     { id: 'marathoner',    icon: '🏃', name: 'Marathoner',
       desc: 'Travel 500m in a single run',
       check: s => s.bestDistance >= 500 },
@@ -973,12 +1006,45 @@
     { id: 'perfectionist', icon: '💫', name: 'Perfectionist',
       desc: '50 Perfect Bonds',
       check: s => s.bondsPerfect >= 50 },
+
+    // ─── Tier 3: dedicated (10+ hours of focused play) ───────────
     { id: 'voidWalker',    icon: '🌌', name: 'Void Walker',
       desc: 'Travel 1000m in a single run',
       check: s => s.bestDistance >= 1000 },
     { id: 'pilgrim',       icon: '🐾', name: 'Pilgrim',
-      desc: 'Cumulative 5000m across all runs',
-      check: s => s.totalDistance >= 5000 },
+      desc: 'Cumulative 10000m across all runs',
+      check: s => s.totalDistance >= 10000 },
+    { id: 'butcher',       icon: '🩸', name: 'The Butcher',
+      desc: 'Stomp 250 enemies',
+      check: s => s.enemiesStomped >= 250 },
+    { id: 'devoted',       icon: '🌑', name: 'Devoted',
+      desc: 'Survive 100 runs',
+      check: s => s.runs >= 100 },
+
+    // ─── Tier 4: prestige (mastery, weeks of play) ───────────────
+    { id: 'legend',        icon: '👑', name: 'Legend of the Wild',
+      desc: 'Travel 2500m in a single run',
+      check: s => s.bestDistance >= 2500 },
+    { id: 'savant',        icon: '🎯', name: 'Savant',
+      desc: '500 Perfect Bonds',
+      check: s => s.bondsPerfect >= 500 },
+    { id: 'rhythmKeeper',  icon: '🌀', name: 'Rhythm Keeper',
+      desc: 'Perform 1000 chained bonds',
+      check: s => s.bondsChained >= 1000 },
+    { id: 'odyssey',       icon: '🌠', name: 'Odyssey',
+      desc: 'Cumulative 50000m across all runs',
+      check: s => s.totalDistance >= 50000 },
+    { id: 'apexPredator',  icon: '🔱', name: 'Apex Predator',
+      desc: 'Stomp 1000 enemies',
+      check: s => s.enemiesStomped >= 1000 },
+
+    // ─── Tier 5: mythical (only the most dedicated will see these) ─
+    { id: 'eternal',       icon: '♾️', name: 'Eternal',
+      desc: 'Travel 5000m in a single run',
+      check: s => s.bestDistance >= 5000 },
+    { id: 'transcendent',  icon: '⭐', name: 'Transcendent',
+      desc: '2500 Perfect Bonds',
+      check: s => s.bondsPerfect >= 2500 },
   ];
 
   // Lookup map for fast access by ID
@@ -3528,8 +3594,19 @@
 
   // Use pointerdown for snappy mobile response, and stopPropagation so the
   // tap never bubbles to canvas-level handlers.
+  // tapLockUntil prevents accidental tap-through when one button shows another
+  // (e.g. quitToMenu shows start-screen which has a button at the same spot).
+  let tapLockUntil = 0;
   const bindTap = (el, fn) => {
-    const h = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+    const h = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (performance.now() < tapLockUntil) return;
+      // After firing, lock briefly so the synthetic click event or pointerdown
+      // on a newly-revealed underneath button doesn't fire too.
+      tapLockUntil = performance.now() + 350;
+      fn();
+    };
     el.addEventListener('pointerdown', h);
     el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
   };
