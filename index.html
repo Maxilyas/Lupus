@@ -231,14 +231,15 @@
     right: 130px;
     width: 60px;
     height: 60px;
-    font-size: 18px;
-    background: radial-gradient(circle at 35% 35%, rgba(80,40,40,0.6), rgba(40,15,15,0.55));
-    border-color: rgba(220, 100, 80, 0.4);
+    font-size: 22px;
+    background: radial-gradient(circle at 35% 35%, rgba(120, 90, 30, 0.55), rgba(60, 40, 10, 0.5));
+    border-color: rgba(244, 196, 80, 0.45);
   }
 
   #btn-sprint.pressed {
-    background: radial-gradient(circle at 35% 35%, rgba(220, 100, 80, 0.4), rgba(140,50,40,0.5));
-    border-color: rgba(255, 140, 100, 0.8);
+    background: radial-gradient(circle at 35% 35%, rgba(244, 196, 80, 0.45), rgba(180, 130, 40, 0.5));
+    border-color: rgba(255, 220, 130, 0.85);
+    box-shadow: 0 0 24px rgba(244, 196, 80, 0.4);
   }
 
   /* OVERLAY */
@@ -590,7 +591,7 @@
 <div id="touch-controls">
   <div class="touch-btn" id="btn-left">◀</div>
   <div class="touch-btn" id="btn-right">▶</div>
-  <div class="touch-btn" id="btn-sprint">⚡</div>
+  <div class="touch-btn" id="btn-sprint">✦</div>
   <div class="touch-btn" id="btn-jump">▲</div>
 </div>
 
@@ -603,11 +604,12 @@
       <span class="desktop-only">
         Move <span class="key">A</span> <span class="key">D</span> <span style="opacity:0.5;">or</span> <span class="key">←</span> <span class="key">→</span><br>
         Jump <span class="key">SPACE</span> <span style="opacity:0.5;">or</span> <span class="key">W</span> <span class="key">↑</span><br>
-        Sprint <span class="key">SHIFT</span> &nbsp;·&nbsp; Double Jump available
+        Bond <span class="key">SHIFT</span> &nbsp;·&nbsp; <span style="opacity:0.7;">hold &amp; release</span><br>
+        Pause <span class="key">P</span> <span style="opacity:0.5;">or</span> <span class="key">ESC</span>
       </span>
       <span class="mobile-only">
         Move <span class="key">◀</span> <span class="key">▶</span> &nbsp;·&nbsp; Jump <span class="key">▲</span><br>
-        Sprint <span class="key">⚡</span> &nbsp;·&nbsp; Tap <span class="key">▲</span> twice for double jump<br>
+        Bond <span class="key">✦</span> &nbsp;<span style="opacity:0.7;">hold &amp; release</span><br>
         <span style="opacity:0.7; font-size: 0.85em;">Best played in landscape</span>
       </span>
     </div>
@@ -773,7 +775,68 @@
     squashTarget: 1,  // eased toward this each frame
     prevVy: 0,        // for detecting hard landings
     ridingPlatform: null, // moving/crumble platform the wolf is currently standing on
+
+    // --- Bond mechanic ---
+    bondCharge: 0,        // 0..1, accumulated while holding bond key
+    bondCharging: false,  // currently charging
+    bondChainWindow: 0,   // frames after a bond where re-bond is instant
+    bondCooldown: 0,      // small lockout after a bond to prevent input spam
+    bondTrail: [],        // recent positions for visual trail when bonded recently
   };
+
+  // Fires a bond. chargeRatio is 0..1, perfect adds bonus, chained uses fixed power.
+  function fireBond(chargeRatio, perfect, chained) {
+    let power;
+    if (chained) {
+      // Use last meaningful charge or a default
+      power = BOND_MAX_POWER * BOND_CHAIN_POWER;
+    } else {
+      power = BOND_MIN_POWER + (BOND_MAX_POWER - BOND_MIN_POWER) * chargeRatio;
+      if (perfect) power *= BOND_PERFECT_BONUS;
+    }
+    const dir = wolf.facing;
+    wolf.vx = power * dir;
+
+    // (G) Apex bond: if launched at jump apex (|vy| small), keep horizontal,
+    // don't add upward kick. Otherwise add gentle vy lift for arc on grounded bonds.
+    const isApex = !wolf.onGround && Math.abs(wolf.vy) <= BOND_APEX_THRESHOLD;
+    if (isApex) {
+      wolf.vy = BOND_APEX_VY;  // pure horizontal at apex
+    } else if (wolf.onGround) {
+      wolf.vy = BOND_VY_LIFT;  // gentle lift on ground bond
+    }
+    // Mid-air non-apex bonds keep current vy, just gain horizontal — feels right
+
+    // Stamina cost (chained pays less)
+    const cost = chained
+      ? 10
+      : BOND_STAMINA_COST_MIN + (BOND_STAMINA_COST_MAX - BOND_STAMINA_COST_MIN) * chargeRatio;
+    wolf.stamina = Math.max(0, wolf.stamina - cost);
+
+    // Visual: stretch the wolf forward, dust burst, sparkles
+    wolf.squash = 0.8; wolf.squashTarget = 1;
+    for (let i = 0; i < 6; i++) {
+      spawnDust(wolf.x + wolf.w/2 - dir * 8, wolf.y + wolf.h - 2);
+    }
+    // Perfect bond: golden sparkle burst + small shake + brief hit-stop
+    if (perfect) {
+      for (let i = 0; i < 10; i++) {
+        spawnSparkle(wolf.x + wolf.w/2, wolf.y + wolf.h/2, '255, 220, 120');
+      }
+      addShake(3);
+      addHitStop(2);
+    } else if (!chained) {
+      addShake(1.5);
+    }
+
+    // Open chain window for the next bond
+    wolf.bondChainWindow = BOND_CHAIN_WINDOW;
+    wolf.bondCooldown = BOND_COOLDOWN;
+
+    // Reset charge state
+    wolf.bondCharging = false;
+    wolf.bondCharge = 0;
+  }
 
   const CHUNK_W = 480;
   const chunks = new Map();
@@ -1211,6 +1274,25 @@
   const FRICTION = 0.82;
   const AIR_FRICTION = 0.96;
 
+  // --- Bond constants ---
+  // Charge takes BOND_CHARGE_FRAMES frames to reach max. Movement is halved while charging.
+  const BOND_CHARGE_FRAMES = 60;     // 1 second to fully charge
+  const BOND_PERFECT_START = 54;     // perfect window opens at 90% charge
+  const BOND_PERFECT_END = 60;       // closes when fully charged (relax = perfect)
+  const BOND_MIN_FRAMES = 12;        // below this, releasing does nothing (avoid accidental tiny bonds)
+  const BOND_CHARGE_SLOW = 0.5;      // movement multiplier while charging
+  const BOND_MIN_POWER = 8;          // horizontal velocity at minimum charge
+  const BOND_MAX_POWER = 16;         // horizontal velocity at max charge
+  const BOND_PERFECT_BONUS = 1.25;   // perfect bond multiplier
+  const BOND_VY_LIFT = -3.5;         // vertical kick (gentle arc on grounded bond)
+  const BOND_APEX_VY = 0;            // apex bond: pure horizontal (no vy change beyond friction)
+  const BOND_APEX_THRESHOLD = 1.5;   // |vy| <= this counts as apex
+  const BOND_CHAIN_WINDOW = 30;      // frames after landing where re-bond is instant
+  const BOND_CHAIN_POWER = 0.85;     // chained bond power as fraction of charged bond
+  const BOND_COOLDOWN = 6;           // tiny cooldown after firing
+  const BOND_STAMINA_COST_MIN = 15;  // at min charge
+  const BOND_STAMINA_COST_MAX = 35;  // at max charge
+
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
@@ -1268,26 +1350,97 @@
     const left = keys['ArrowLeft'] || keys['KeyA'] || touch.left;
     const right = keys['ArrowRight'] || keys['KeyD'] || touch.right;
     const jumpHeld = keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touch.jump;
-    const sprintKey = keys['ShiftLeft'] || keys['ShiftRight'] || touch.sprint;
+    const bondKey = keys['ShiftLeft'] || keys['ShiftRight'] || touch.sprint;
 
-    wolf.sprinting = sprintKey && wolf.stamina > 0 && (left || right);
-    const maxSpeed = wolf.sprinting ? SPRINT_MAX : MOVE_MAX;
+    // --- BOND MECHANIC ---
+    // Tick down chain window and cooldown
+    if (wolf.bondChainWindow > 0) wolf.bondChainWindow--;
+    if (wolf.bondCooldown > 0) wolf.bondCooldown--;
+
+    const hasDirection = left || right;
+    const wasCharging = wolf.bondCharging;
+
+    // Edge-detect the bond key
+    const bondPressed = bondKey && !wolf._bondPrev;
+    const bondReleased = !bondKey && wolf._bondPrev;
+
+    // (D) chained bond: pressing while still in chain window fires immediately
+    // with reduced power, no charge needed
+    if (bondPressed && wolf.bondChainWindow > 0 && wolf.bondCooldown === 0
+        && wolf.stamina >= 10 && hasDirection) {
+      fireBond(0.85, false, true);  // chained
+    }
+    // Start a fresh charge if pressing fresh and not in chain window
+    else if (bondKey && !wolf.bondCharging && wolf.bondCooldown === 0
+        && wolf.stamina >= BOND_STAMINA_COST_MIN && hasDirection) {
+      wolf.bondCharging = true;
+      wolf.bondCharge = 0;
+    }
+
+    // Continue charging
+    if (wolf.bondCharging) {
+      // (E) cancel: if direction released or wolf takes damage, refund stamina
+      if (!hasDirection || wolf.invuln > 50) {  // invuln just triggered (high)
+        wolf.bondCharging = false;
+        wolf.bondCharge = 0;
+        // No stamina spent during charge — refund is implicit (we never deducted)
+      } else if (bondReleased) {
+        // Release: fire the bond if charge is enough
+        if (wolf.bondCharge >= BOND_MIN_FRAMES / BOND_CHARGE_FRAMES) {
+          // (F) Perfect bond: released within the perfect window
+          const perfect = wolf.bondCharge >= BOND_PERFECT_START / BOND_CHARGE_FRAMES
+                       && wolf.bondCharge <= 1.0;
+          fireBond(wolf.bondCharge, perfect, false);
+        } else {
+          // Below minimum: cancel cleanly
+          wolf.bondCharging = false;
+          wolf.bondCharge = 0;
+        }
+      } else {
+        // Accumulate charge; cap at 1.0 (held past max = stays at 1)
+        wolf.bondCharge = Math.min(1, wolf.bondCharge + 1 / BOND_CHARGE_FRAMES);
+      }
+    }
+    wolf._bondPrev = bondKey;
+
+    // Movement: speed is reduced while charging
+    const chargingNow = wolf.bondCharging;
+    const maxSpeed = chargingNow ? MOVE_MAX * BOND_CHARGE_SLOW : MOVE_MAX;
+    // sprinting flag kept for animation use elsewhere — true if recently bonded
+    wolf.sprinting = wolf.bondChainWindow > 0 || Math.abs(wolf.vx) > MOVE_MAX + 0.5;
 
     if (left) {
-      wolf.vx -= MOVE_ACCEL;
+      wolf.vx -= MOVE_ACCEL * (chargingNow ? 0.6 : 1);
       wolf.facing = -1;
     }
     if (right) {
-      wolf.vx += MOVE_ACCEL;
+      wolf.vx += MOVE_ACCEL * (chargingNow ? 0.6 : 1);
       wolf.facing = 1;
     }
     if (!left && !right) {
       wolf.vx *= wolf.onGround ? FRICTION : AIR_FRICTION;
     }
-    wolf.vx = Math.max(-maxSpeed, Math.min(maxSpeed, wolf.vx));
+    // While charging or just-bonded, allow speeds beyond MOVE_MAX (don't clamp them down).
+    // Otherwise clamp to maxSpeed for normal running.
+    if (Math.abs(wolf.vx) <= maxSpeed) {
+      wolf.vx = Math.max(-maxSpeed, Math.min(maxSpeed, wolf.vx));
+    } else {
+      // Decay back toward max gradually if running fast (e.g. post-bond)
+      wolf.vx *= 0.985;
+    }
 
-    if (wolf.sprinting) wolf.stamina = Math.max(0, wolf.stamina - 0.6);
-    else wolf.stamina = Math.min(100, wolf.stamina + 0.4);
+    // Stamina: regen when not charging
+    if (!chargingNow) wolf.stamina = Math.min(100, wolf.stamina + 0.4);
+
+    // Bond trail: record positions while sprinting (post-bond) for visual effect
+    if (wolf.sprinting && frame % 2 === 0) {
+      wolf.bondTrail.push({ x: wolf.x, y: wolf.y, life: 18 });
+      if (wolf.bondTrail.length > 12) wolf.bondTrail.shift();
+    }
+    for (let i = wolf.bondTrail.length - 1; i >= 0; i--) {
+      wolf.bondTrail[i].life--;
+      if (wolf.bondTrail[i].life <= 0) wolf.bondTrail.splice(i, 1);
+    }
 
     if (wolf.onGround) wolf.coyote = 8;
     else wolf.coyote = Math.max(0, wolf.coyote - 1);
@@ -1325,10 +1478,37 @@
     wolf.x += wolf.vx;
     let allPlatforms = [];
     for (const c of activeChunks) allPlatforms = allPlatforms.concat(c.platforms);
+    const STEP_UP_MAX = 20; // tallest step we can climb without losing momentum
     for (const p of allPlatforms) {
       if (p.type === 'crumble' && p.crumbled) continue;
       if (rectsOverlap(wolf, p)) {
         if (p.type === 'ground') {
+          // Try step-up: if the obstacle's top is within STEP_UP_MAX of the
+          // wolf's feet AND the wolf is grounded (or near-grounded), lift him
+          // onto it without losing horizontal velocity. Mimics what every 3D
+          // engine does for stairs — invisible, intuitive, preserves flow.
+          const wolfFeet = wolf.y + wolf.h;
+          const stepHeight = wolfFeet - p.y;
+          const grounded = wolf.onGround || wolf.vy >= -1;
+          if (grounded && stepHeight > 0 && stepHeight <= STEP_UP_MAX) {
+            // Verify the lifted position is clear of other obstacles
+            const liftedY = p.y - wolf.h;
+            const probeWolf = { x: wolf.x, y: liftedY, w: wolf.w, h: wolf.h };
+            let blocked = false;
+            for (const q of allPlatforms) {
+              if (q === p) continue;
+              if (q.type === 'crumble' && q.crumbled) continue;
+              if (q.type !== 'ground') continue; // only solid grounds matter for blocking
+              if (rectsOverlap(probeWolf, q)) { blocked = true; break; }
+            }
+            if (!blocked) {
+              wolf.y = liftedY;
+              wolf.onGround = true;
+              wolf.jumps = 0;
+              continue; // do NOT zero out vx — flow preserved
+            }
+          }
+          // Real wall — stop horizontal motion
           if (wolf.vx > 0) wolf.x = p.x - wolf.w;
           else if (wolf.vx < 0) wolf.x = p.x + p.w;
           wolf.vx = 0;
@@ -1385,6 +1565,13 @@
           spawnDust(wolf.x + wolf.w/2 - 8, wolf.y + wolf.h);
           spawnDust(wolf.x + wolf.w/2 + 8, wolf.y + wolf.h);
         }
+      }
+      // (D) Re-open the chain window on landing if the wolf bonded recently:
+      // a long bond may consume the original window mid-air. Refreshing it on
+      // touchdown is what makes chained bonds satisfying — you press, you land,
+      // you press again.
+      if (wolf.bondChainWindow > 0) {
+        wolf.bondChainWindow = BOND_CHAIN_WINDOW;
       }
     }
 
@@ -2039,7 +2226,9 @@
       }
     }
 
+    drawBondFxBack();
     drawWolf();
+    drawBondFxFront();
 
     ctx.restore();
 
@@ -2487,6 +2676,50 @@
     ctx.restore();
   }
 
+  function drawBondFxBack() {
+    // Bond trail: faded silhouettes behind a recently-bonded wolf
+    for (let i = 0; i < wolf.bondTrail.length; i++) {
+      const t = wolf.bondTrail[i];
+      const a = (t.life / 18) * 0.3;
+      ctx.fillStyle = `rgba(244, 196, 80, ${a})`;
+      ctx.fillRect(t.x + 4, t.y + 6, wolf.w - 8, wolf.h - 8);
+    }
+  }
+
+  function drawBondFxFront() {
+    // Charge indicator: glowing arc around the wolf, intensity = charge ratio.
+    if (!wolf.bondCharging) return;
+    const cx = wolf.x + wolf.w / 2;
+    const cy = wolf.y + wolf.h / 2;
+    const ratio = wolf.bondCharge;
+    // Color shift: golden during build, bright pulse in perfect window
+    const inPerfect = ratio >= BOND_PERFECT_START / BOND_CHARGE_FRAMES && ratio <= 1.0;
+
+    // Outer halo
+    const haloR = 22 + ratio * 14;
+    const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, haloR);
+    if (inPerfect) {
+      const pulse = 0.7 + 0.3 * Math.sin(frame * 0.6);
+      grad.addColorStop(0, `rgba(255, 240, 150, ${0.5 * pulse})`);
+      grad.addColorStop(0.6, `rgba(255, 200, 80, ${0.3 * pulse})`);
+      grad.addColorStop(1, 'rgba(255, 200, 80, 0)');
+    } else {
+      grad.addColorStop(0, `rgba(244, 196, 80, ${0.25 * ratio})`);
+      grad.addColorStop(0.5, `rgba(244, 196, 80, ${0.12 * ratio})`);
+      grad.addColorStop(1, 'rgba(244, 196, 80, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
+
+    // Charge arc (visible bar around the wolf)
+    ctx.strokeStyle = inPerfect ? '#fff5b8' : '#f4c430';
+    ctx.lineWidth = inPerfect ? 2.5 : 1.5;
+    ctx.beginPath();
+    // Arc from -PI/2 going clockwise, length = ratio * 2PI
+    ctx.arc(cx, cy, 18, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2);
+    ctx.stroke();
+  }
+
   function drawWolf() {
     const x = wolf.x;
     const y = wolf.y;
@@ -2612,6 +2845,10 @@
     wolf.invuln = 0; wolf.jumps = 0;
     wolf.squash = 1; wolf.squashTarget = 1; wolf.prevVy = 0;
     wolf.ridingPlatform = null;
+    wolf.bondCharge = 0; wolf.bondCharging = false;
+    wolf.bondChainWindow = 0; wolf.bondCooldown = 0;
+    wolf.bondTrail.length = 0;
+    wolf._bondPrev = false; wolf._jumpPrev = false;
     camera.x = 0; camera.y = 0;
     chunks.clear();
     particles.length = 0;
