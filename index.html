@@ -681,12 +681,109 @@
   function addShake(amp) { if (amp > shakeAmp) shakeAmp = amp; }
   function addHitStop(frames) { if (frames > hitStop) hitStop = frames; }
 
-  // Persistent high score
-  let highScore = 0;
-  try {
-    const hs = parseInt(localStorage.getItem('lupus_highscore') || '0', 10);
-    if (!isNaN(hs)) highScore = hs;
-  } catch (_) {}
+  // ============================================================
+  // Stats system — persistent player data via localStorage
+  // ============================================================
+  // Bumped when the schema changes; we run migrations between versions
+  // so older saves keep working instead of being wiped.
+  const STATS_VERSION = 1;
+  const STATS_KEY = 'lupus_stats';
+
+  // Default values for every tracked stat. Add new stats here — migration
+  // will pick up missing keys automatically.
+  const STATS_DEFAULTS = {
+    version: STATS_VERSION,
+    runs: 0,                  // total runs played (count startGame calls)
+    totalDistance: 0,         // sum of all run distances in meters
+    bestDistance: 0,          // best single run, replaces lupus_highscore
+    enemiesStomped: 0,        // any enemy killed by stomp
+    bondsTotal: 0,            // every fired bond (not chained)
+    bondsPerfect: 0,          // perfect bonds specifically
+    bondsChained: 0,          // chained re-bonds (post-bond window)
+    pickupsCollected: 0,      // meat + orbs combined
+    biomesVisited: [],        // unique biome ids seen across all runs (array form for JSON)
+  };
+
+  const Stats = (function() {
+    let data = null;
+    let dirty = false;
+
+    function load() {
+      let raw;
+      try { raw = localStorage.getItem(STATS_KEY); } catch (_) { raw = null; }
+      let parsed = null;
+      if (raw) {
+        try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
+      }
+      // Initialize from defaults; merge any stored values on top
+      data = Object.assign({}, STATS_DEFAULTS);
+      if (parsed && typeof parsed === 'object') {
+        // Future-proof migration hook: when STATS_VERSION bumps, branch here
+        for (const k in STATS_DEFAULTS) {
+          if (parsed[k] !== undefined) data[k] = parsed[k];
+        }
+      }
+      // One-time migration of the old high score key
+      try {
+        const legacyHs = parseInt(localStorage.getItem('lupus_highscore') || '0', 10);
+        if (!isNaN(legacyHs) && legacyHs > data.bestDistance) {
+          data.bestDistance = legacyHs;
+          dirty = true;
+        }
+      } catch (_) {}
+      data.version = STATS_VERSION;
+    }
+
+    function save() {
+      if (!dirty) return;
+      try {
+        localStorage.setItem(STATS_KEY, JSON.stringify(data));
+        dirty = false;
+      } catch (_) {}
+    }
+
+    load();
+    // Throttle: flush at most once per second
+    setInterval(save, 1000);
+    // Also flush on tab hide/close so we don't lose the last second
+    window.addEventListener('beforeunload', save);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) save();
+    });
+
+    return {
+      get(key) { return data[key]; },
+      set(key, value) { data[key] = value; dirty = true; },
+      inc(key, n) {
+        if (typeof n !== 'number') n = 1;
+        data[key] = (data[key] || 0) + n;
+        dirty = true;
+      },
+      max(key, value) {
+        if (value > (data[key] || 0)) {
+          data[key] = value;
+          dirty = true;
+          return true; // new record
+        }
+        return false;
+      },
+      addToSet(key, value) {
+        // For arrays-as-sets like biomesVisited
+        if (!Array.isArray(data[key])) data[key] = [];
+        if (data[key].indexOf(value) === -1) {
+          data[key].push(value);
+          dirty = true;
+          return true; // newly added
+        }
+        return false;
+      },
+      all() { return Object.assign({}, data); },
+      flush: save,
+    };
+  })();
+
+  // Backwards-compat alias used by death screen render code
+  let highScore = Stats.get('bestDistance');
 
   // Current biome being rendered (set each frame)
   let currentBiome = 'forest';
@@ -868,6 +965,14 @@
     wolf.bondCooldown = BOND_COOLDOWN;
     wolf.bondCharging = false;
     wolf.bondCharge = 0;
+
+    // Stats
+    if (chained) {
+      Stats.inc('bondsChained');
+    } else {
+      Stats.inc('bondsTotal');
+      if (perfect) Stats.inc('bondsPerfect');
+    }
   }
 
   const CHUNK_W = 480;
@@ -1645,6 +1750,7 @@
     if (BIOMES[wolfBiome].windForce !== 0) {
       wolf.vx += BIOMES[wolfBiome].windForce;
     }
+    Stats.addToSet('biomesVisited', wolfBiome);
 
     for (const c of activeChunks) {
       for (const h of c.hazards) {
@@ -1704,6 +1810,7 @@
         if (it.collected) continue;
         if (rectsOverlap(wolf, it)) {
           it.collected = true;
+          Stats.inc('pickupsCollected');
           if (it.kind === 'meat') {
             wolf.health = Math.min(100, wolf.health + 20);
             spawnSparkle(it.x + 8, it.y + 8, '230, 90, 60');
@@ -1745,6 +1852,7 @@
           if (rectsOverlap(wolf, eRect)) {
             if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
               e.alive = false;
+              Stats.inc('enemiesStomped');
               wolf.vy = -8;
               wolf.jumps = Math.max(0, wolf.jumps - 1);
               spawnBlood(e.x, e.y);
@@ -1803,6 +1911,7 @@
           if (rectsOverlap(wolf, eRect)) {
             if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
               e.alive = false;
+              Stats.inc('enemiesStomped');
               wolf.vy = -9;
               wolf.jumps = Math.max(0, wolf.jumps - 1);
               spawnBlood(e.x, e.y - 10);
@@ -1839,6 +1948,7 @@
               if (rectsOverlap(wolf, eRect)) {
                 if (wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
                   e.alive = false;
+                  Stats.inc('enemiesStomped');
                   wolf.vy = -9;
                   spawnSparkle(e.x, e.y, '255, 200, 100');
                   spawnSparkle(e.x, e.y, '255, 200, 100');
@@ -1968,6 +2078,7 @@
             // Stompable only when the centipede is on the TOP edge
             if (e.edge === 'top' && wolf.vy > 1 && (wolf.y + wolf.h - wolf.vy) < eRect.y + 6) {
               e.alive = false;
+              Stats.inc('enemiesStomped');
               wolf.vy = -8;
               wolf.jumps = Math.max(0, wolf.jumps - 1);
               spawnBlood(e.x, e.y);
@@ -3003,6 +3114,7 @@
 
   function startGame() {
     state = 'playing';
+    Stats.inc('runs');
     wolf.x = 100; wolf.y = 200;
     wolf.vx = 0; wolf.vy = 0;
     wolf.health = 100; wolf.stamina = 100;
@@ -3112,13 +3224,12 @@
     const sec = Math.floor(elapsedMs / 1000);
     document.getElementById('final-time').textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
 
-    // High score persistence
-    let isNewRecord = false;
-    if (finalDist > highScore) {
-      highScore = finalDist;
-      isNewRecord = true;
-      try { localStorage.setItem('lupus_highscore', String(highScore)); } catch (_) {}
-    }
+    // Persistent stats: total distance accumulates, best distance is the max
+    Stats.inc('totalDistance', finalDist);
+    const isNewRecord = Stats.max('bestDistance', finalDist);
+    highScore = Stats.get('bestDistance');
+    Stats.flush(); // make sure death is committed even if user closes app
+
     const hsEl = document.getElementById('best-dist');
     if (hsEl) {
       hsEl.textContent = highScore;
